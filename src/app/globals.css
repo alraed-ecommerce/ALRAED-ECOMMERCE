@@ -2103,6 +2103,42 @@ textarea { transition-duration: .2s; }
   border-color: var(--theme-border) !important;
   color: var(--ink) !important;
 }
+@media (max-width: 760px) {
+  .ar-nav.is-open {
+    background: var(--paper);
+    border-bottom-color: var(--theme-border);
+  }
+  .ar-nav.is-open > button,
+  .ar-nav.is-open > a,
+  .ar-nav.is-open .ar-nav-dropdown > summary {
+    color: var(--ink);
+  }
+  .ar-nav.is-open > button:hover,
+  .ar-nav.is-open > a:hover,
+  .ar-nav.is-open .ar-nav-dropdown > summary:hover,
+  .ar-nav.is-open > button:focus-visible,
+  .ar-nav.is-open > a:focus-visible,
+  .ar-nav.is-open .ar-nav-dropdown > summary:focus-visible {
+    color: var(--theme-hover);
+  }
+  :root[data-theme="dark"] .ar-nav.is-open {
+    background: #10151d;
+    border-bottom-color: #303944;
+  }
+  :root[data-theme="dark"] .ar-nav.is-open > button,
+  :root[data-theme="dark"] .ar-nav.is-open > a,
+  :root[data-theme="dark"] .ar-nav.is-open .ar-nav-dropdown > summary {
+    color: #f5f7fa;
+  }
+  :root[data-theme="dark"] .ar-nav.is-open > button:hover,
+  :root[data-theme="dark"] .ar-nav.is-open > a:hover,
+  :root[data-theme="dark"] .ar-nav.is-open .ar-nav-dropdown > summary:hover,
+  :root[data-theme="dark"] .ar-nav.is-open > button:focus-visible,
+  :root[data-theme="dark"] .ar-nav.is-open > a:focus-visible,
+  :root[data-theme="dark"] .ar-nav.is-open .ar-nav-dropdown > summary:focus-visible {
+    color: #a9d1ff;
+  }
+}
 :root[data-theme="dark"] .admin-dashboard .border-slate-800,
 :root[data-theme="dark"] .admin-dashboard .border-slate-700,
 :root[data-theme="dark"] .admin-dashboard .border-slate-900 {
