@@ -423,6 +423,7 @@ body { background: #090b0f; color: #f5f7fa; }
 .ar-search-results button span { font-size: 11px; }
 .ar-search-results button small { color: #8799ad; font-size: 8px; letter-spacing: .15em; }
 .ar-account, .ar-bag-button { align-items: center; background: transparent; border: 0; color: #e2e7ee; cursor: pointer; display: inline-flex; font-size: 11px; font-weight: 700; gap: 8px; letter-spacing: .12em; white-space: nowrap; }
+.ar-account-mobile-icon { display: none; }
 .ar-account:hover, .ar-bag-button:hover { color: var(--ar-blue); }
 .ar-bag-button b { align-items: center; background: var(--ar-blue); border-radius: 50%; color: #07121f; display: inline-flex; font-size: 9px; height: 19px; justify-content: center; letter-spacing: 0; width: 19px; }
 .ar-floating-actions { bottom: 70px; display: flex; flex-direction: column; gap: 10px; position: fixed; right: 24px; z-index: 45; }
@@ -728,7 +729,9 @@ body { background: #090b0f; color: #f5f7fa; }
 	.ar-search.is-open input, .ar-search:focus-within input { display: block; }
 	.ar-search-results { right: -85px; top: calc(100% + 60px); width: min(310px, 82vw); }
 	.ar-clear-search { position: absolute; right: -75px; top: 12px; z-index: 36; }
-	.ar-account { display: none; }
+	.ar-account { justify-content: center; min-height: 38px; min-width: 32px; }
+	.ar-account > span, .ar-account-desktop-icon { display: none; }
+	.ar-account-mobile-icon { display: block; }
 	.ar-bag-button { gap: 5px; }
 	.ar-floating-actions { bottom: 16px; right: 16px; }
 	.ar-floating-button { min-height: 32px; min-width: 32px; }
