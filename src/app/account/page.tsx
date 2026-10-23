@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, Clock3, LogOut, MapPin, PackageCheck, Plus, Save, ShieldCheck, UserRound } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
-import { isAdminEmail } from "@/lib/admin";
 
 type Address = {
   id: string;
@@ -59,6 +58,7 @@ export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [phone, setPhone] = useState("");
   const [whatsappOrderUpdatesOptIn, setWhatsappOrderUpdatesOptIn] = useState(false);
   const [addressDraft, setAddressDraft] = useState(emptyAddress());
@@ -77,17 +77,33 @@ export default function AccountPage() {
       setUser(currentUser);
       if (!currentUser) {
         setLoading(false);
+        setIsAdmin(false);
         setProfile(null);
         setOrders([]);
         return;
       }
 
+      setIsAdmin(false);
       setLoading(true);
       setError(null);
       void (async () => {
         try {
           const token = await currentUser.getIdToken();
           const headers = { Authorization: `Bearer ${token}` };
+          void fetch("/api/admin/session", { headers, cache: "no-store" })
+            .then(async (response) => {
+              if (response.status === 401 || response.status === 403) {
+                setIsAdmin(false);
+                return;
+              }
+              if (!response.ok) throw new Error(`Admin access check failed with status ${response.status}.`);
+              const result = await response.json() as { admin?: boolean };
+              setIsAdmin(result.admin === true);
+            })
+            .catch((adminError: unknown) => {
+              setIsAdmin(false);
+              console.error("Unable to verify admin menu access.", adminError);
+            });
           const [profileResponse, ordersResponse] = await Promise.all([
             fetch("/api/profile", { headers, cache: "no-store" }),
             fetch("/api/orders", { headers, cache: "no-store" }),
@@ -266,7 +282,7 @@ export default function AccountPage() {
           <div className="account-page-heading">
             <div><p className="account-kicker">YOUR AL RAED ACCOUNT</p><h1>Account <em>overview</em></h1></div>
             <div className="flex items-center gap-3">
-              {isAdminEmail(user?.email) && (
+              {isAdmin && (
                 <Link href="/admin" className="account-logout" style={{ display: "inline-flex" }}><ShieldCheck size={16} /> Admin</Link>
               )}
               <button className="account-logout" onClick={handleLogout}><LogOut size={16} /> Sign out</button>
