@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AthleteShowcase from "./AthleteShowcase";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
-import { mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
+import { getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
 import {
   ArrowDown,
@@ -41,6 +41,8 @@ function isCartLine(value: unknown): value is CartLine {
     && line.quantity > 0
     && typeof item.id === "number"
     && Number.isSafeInteger(item.id)
+    && (item.productType === undefined || item.productType === "shoe" || item.productType === "racquet" || item.productType === "other")
+    && (item.sizeCategory === undefined || item.sizeCategory === null || item.sizeCategory === "mens" || item.sizeCategory === "womens" || item.sizeCategory === "kids")
     && typeof item.name === "string"
     && typeof item.brand === "string"
     && typeof item.category === "string"
@@ -52,7 +54,12 @@ function isCartLine(value: unknown): value is CartLine {
     && typeof item.reviews === "number"
     && Number.isSafeInteger(item.reviews)
     && typeof item.stock === "number"
-    && Number.isSafeInteger(item.stock);
+    && Number.isSafeInteger(item.stock)
+    && (item.colors === undefined || (Array.isArray(item.colors) && item.colors.every((color) => typeof color === "string")))
+    && (item.sizes === undefined || (Array.isArray(item.sizes) && item.sizes.every((size) => typeof size === "string")))
+    && (item.unavailableSizes === undefined || (Array.isArray(item.unavailableSizes) && item.unavailableSizes.every((size) => typeof size === "string")))
+    && (line.color === undefined || typeof line.color === "string")
+    && (line.size === undefined || typeof line.size === "string");
 }
 
 const categories = [
@@ -176,8 +183,8 @@ function ProductTile({
         <button className={`ar-wishlist ${liked ? "is-liked" : ""}`} type="button" onClick={() => onLike(product.id)} aria-label={`${liked ? "Remove" : "Add"} ${product.name} ${liked ? "from" : "to"} wishlist`}>
           <Heart size={18} fill={liked ? "currentColor" : "none"} />
         </button>
-        <button className="ar-quick-add" type="button" onClick={() => onAdd(product)} disabled={product.stock <= 0} aria-label={`Add ${product.name} to bag`}>
-          {product.stock <= 0 ? "SOLD OUT" : added ? <><Check size={15} /> ADDED</> : <>ADD TO BAG <Plus size={15} /></>}
+        <button className="ar-quick-add" type="button" onClick={() => hasProductOptions(product) ? onView(product) : onAdd(product)} disabled={product.stock <= 0} aria-label={`${hasProductOptions(product) ? "Choose options for" : "Add"} ${product.name} ${hasProductOptions(product) ? "" : "to bag"}`}>
+          {product.stock <= 0 ? "SOLD OUT" : added ? <><Check size={15} /> ADDED</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={15} /></> : <>ADD TO BAG <Plus size={15} /></>}
         </button>
       </div>
       <div className="ar-product-copy">
@@ -391,7 +398,20 @@ export default function Home() {
         const saved = localStorage.getItem("alraed-storefront-cart");
         if (saved) {
           const parsedCart: unknown = JSON.parse(saved);
-          if (Array.isArray(parsedCart)) setCart(parsedCart.filter(isCartLine));
+          if (Array.isArray(parsedCart)) {
+            setCart(parsedCart.filter(isCartLine).map((line) => ({
+              ...line,
+              product: {
+                ...line.product,
+                productType: line.product.productType ?? (/shoe|sneaker/i.test(line.product.name) ? "shoe" : /racket|racquet/i.test(line.product.name) ? "racquet" : "other"),
+                sizeCategory: line.product.sizeCategory ?? null,
+                colors: line.product.colors ?? [],
+                sizes: line.product.sizes ?? [],
+                unavailableSizes: line.product.unavailableSizes ?? [],
+                sizeStock: line.product.sizeStock ?? {},
+              },
+            })));
+          }
         }
         const savedWishlist = localStorage.getItem("alraed-storefront-wishlist");
         if (savedWishlist) {
@@ -461,24 +481,44 @@ export default function Home() {
   const cartTotal = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
   const suggestions = query ? products.filter((product) => `${product.name} ${product.brand} ${product.category}`.toLowerCase().includes(query.toLowerCase())).slice(0, 5) : [];
 
-  const addToCart = useCallback((product: StoreProduct, requestedQuantity = 1) => {
-    if (product.stock < 1) return;
+  const addToCart = useCallback((product: StoreProduct, requestedQuantity = 1, options: { color?: string; size?: string } = {}) => {
+    if (product.stock < 1) return false;
+    if ((product.colors.length > 0 && !options.color)
+      || ((product.sizes.length > 0 || isFootwearProduct(product)) && !options.size)) return false;
+    const newLine = { product, quantity: requestedQuantity, ...options };
+    const newLineKey = getCartLineKey(newLine);
+    const existingLine = cart.find((line) => getCartLineKey(line) === newLineKey);
+    const otherVariantQuantity = cart.reduce((total, line) => (
+      line.product.id === product.id && getCartLineKey(line) !== newLineKey ? total + line.quantity : total
+    ), 0);
+    const availableForVariant = Math.min(Math.max(0, product.stock - otherVariantQuantity), 50);
+    if (availableForVariant < 1) return false;
     setCart((items) => {
-      const existing = items.find((line) => line.product.id === product.id);
+      const existing = items.find((line) => getCartLineKey(line) === newLineKey);
       if (existing) {
-        if (existing.quantity >= Math.min(product.stock, 50)) return items;
-        return items.map((line) => line.product.id === product.id ? { ...line, product, quantity: Math.min(line.quantity + requestedQuantity, product.stock, 50) } : line);
+        const otherQuantity = items.reduce((total, line) => (
+          line.product.id === product.id && getCartLineKey(line) !== newLineKey ? total + line.quantity : total
+        ), 0);
+        const maximum = Math.min(Math.max(0, product.stock - otherQuantity), 50);
+        return items.map((line) => getCartLineKey(line) === newLineKey ? { ...line, product, quantity: Math.min(line.quantity + requestedQuantity, maximum) } : line);
       }
-      return [...items, { product, quantity: Math.min(requestedQuantity, product.stock, 50) }];
+      return [...items, { ...newLine, quantity: Math.min(requestedQuantity, availableForVariant) }];
     });
+    if (existingLine && existingLine.quantity >= availableForVariant) return false;
     setJustAdded((items) => [...items.filter((id) => id !== product.id), product.id]);
     window.setTimeout(() => setJustAdded((items) => items.filter((id) => id !== product.id)), 1500);
-  }, []);
+    return true;
+  }, [cart]);
 
-  const changeQuantity = (id: number, delta: number) => setCart((items) => items.flatMap((line) => {
-    if (line.product.id !== id) return [line];
-    const next = line.quantity + delta;
-    return next > 0 ? [{ ...line, quantity: Math.min(next, Math.min(line.product.stock, 50)) }] : [];
+  const changeQuantity = (lineKey: string, delta: number) => setCart((items) => items.flatMap((line) => {
+    if (getCartLineKey(line) !== lineKey) return [line];
+    const otherVariantQuantity = items.reduce((total, otherLine) => (
+      otherLine.product.id === line.product.id && getCartLineKey(otherLine) !== lineKey ? total + otherLine.quantity : total
+    ), 0);
+    const maximum = Math.min(Math.max(0, line.product.stock - otherVariantQuantity), 50);
+    const next = Math.min(line.quantity + delta, maximum);
+    if (next > 0) return [{ ...line, quantity: next }];
+    return delta < 0 ? [] : [line];
   }));
 
   const toggleWishlist = (id: number) => setWishlist((items) => {
@@ -493,14 +533,20 @@ export default function Home() {
     router.push(name === "All" ? "/shop" : `/shop?category=${encodeURIComponent(name)}`);
   };
   const closeNavDropdowns = () => navRef.current?.querySelectorAll("details").forEach((details) => { details.open = false; });
+  const openNavDropdownOnHover = (event: MouseEvent<HTMLDetailsElement>) => {
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) event.currentTarget.open = true;
+  };
+  const closeNavDropdownOnLeave = (event: MouseEvent<HTMLDetailsElement>) => {
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) event.currentTarget.open = false;
+  };
   const viewProduct = (product: StoreProduct) => {
     closeNavDropdowns();
     setMenuOpen(false);
     setSearchOpen(false);
     setSelectedProduct(product);
   };
-  const addProductDetailsToCart = (product: StoreProduct, quantity: number) => {
-    addToCart(product, quantity);
+  const addProductDetailsToCart = (product: StoreProduct, quantity: number, options: { color?: string; size?: string }) => {
+    if (!addToCart(product, quantity, options)) return;
     setSelectedProduct(null);
     setCartOpen(true);
   };
@@ -550,7 +596,7 @@ export default function Home() {
     setCheckoutBusy(true);
     setCheckoutError("");
     try {
-      await startStripeCheckout(cart);
+      await startStripeCheckout(cart, (href) => router.push(href));
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Unable to start secure checkout.");
       setCheckoutBusy(false);
@@ -581,14 +627,14 @@ export default function Home() {
         <button className="ar-mobile-menu" type="button" aria-label="Open menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button>
         <Link className="ar-wordmark" href="/" aria-label="Al Raed Sports home"><img className="ar-brand-logo" src="/IMG_8477.jpg%2010-33-16-710.jpg" alt="" /><span>AL RAED<small>SPORTS</small></span></Link>
         <nav className={`ar-nav ${menuOpen ? "is-open" : ""}`} aria-label="Main navigation" ref={navRef}>
-          <details className="ar-nav-dropdown ar-shop-dropdown">
+          <details className="ar-nav-dropdown ar-shop-dropdown" onMouseEnter={openNavDropdownOnHover} onMouseLeave={closeNavDropdownOnLeave}>
             <summary>SHOP <ChevronDown size={13} /></summary>
             <div className="ar-mega-menu ar-shop-mega">
               <div className="ar-mega-links"><small>FIND YOUR GAME</small><button type="button" onClick={() => selectCategory("All")}>Shop everything <ArrowRight size={14} /></button>{categories.map((category) => <button type="button" key={category.name} onClick={() => selectCategory(category.name)}>{category.name}<ArrowRight size={14} /></button>)}<span>PLAYER-APPROVED PICKS, RIGHT HERE IN THE UAE.</span></div>
               <div className="ar-mega-showcase"><div className="ar-mega-showcase-heading"><Sparkles size={15} /><span>{products.length ? "IN THE SHOP RIGHT NOW" : "CURATED FOR THE COURT"}</span></div>{renderMenuProducts()}</div>
             </div>
           </details>
-          {categories.map((category) => <details className="ar-nav-dropdown ar-category-dropdown" key={category.name}>
+          {categories.map((category) => <details className="ar-nav-dropdown ar-category-dropdown" key={category.name} onMouseEnter={openNavDropdownOnHover} onMouseLeave={closeNavDropdownOnLeave}>
             <summary>{category.name.toUpperCase()}<ChevronDown size={12} /></summary>
             <div className="ar-mega-menu ar-category-mega">
               <div className="ar-mega-links"><small>EXPLORE {category.name.toUpperCase()}</small><button type="button" onClick={() => selectCategory(category.name)}>Shop all {category.name.toLowerCase()} <ArrowRight size={14} /></button><button type="button" onClick={openFavourites}>Player favourites <ArrowRight size={14} /></button><button type="button" onClick={() => { closeNavDropdowns(); setMenuOpen(false); document.querySelector(".ar-categories")?.scrollIntoView({ behavior: "smooth" }); }}>Explore every sport <ArrowRight size={14} /></button><span>{category.note.toUpperCase()} · SELECTED FOR YOUR GAME</span></div>
@@ -775,7 +821,11 @@ export default function Home() {
           <div className="ar-cart-heading"><div><p className="ar-eyebrow">YOUR GAME, GATHERED</p><h2 id="ar-cart-title">Your bag <span>({cartCount})</span></h2></div><button type="button" aria-label="Close bag" onClick={() => setCartOpen(false)}><X /></button></div>
           {checkoutError && <p className="ar-shop-cart-error" role="alert">{checkoutError} <Link href="/account">My account</Link></p>}
           {cart.length === 0 ? <div className="ar-empty-cart"><ShoppingBag size={30} /><strong>A little room for something good.</strong><p>Your bag is waiting for its first match-ready pick.</p><Link className="ar-button ar-button-light" href="/shop" onClick={() => setCartOpen(false)}>FIND YOUR GEAR <ArrowRight size={15} /></Link></div> : <>
-            <div className="ar-cart-items">{cart.map(({ product, quantity }) => <article className="ar-cart-line" key={product.id}><div className="ar-cart-image">{product.image && <img src={product.image} alt="" />}</div><div className="ar-cart-line-copy"><small>{product.brand}</small><strong>{product.name}</strong><span>{money(product.price)}</span><div className="ar-quantity"><button type="button" aria-label={`Remove one ${product.name}`} onClick={() => changeQuantity(product.id, -1)}><Minus size={13} /></button><span>{quantity}</span><button type="button" aria-label={`Add one ${product.name}`} onClick={() => changeQuantity(product.id, 1)} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={13} /></button></div></div><button className="ar-remove-line" type="button" aria-label={`Remove ${product.name}`} onClick={() => setCart((items) => items.filter((line) => line.product.id !== product.id))}><X size={16} /></button></article>)}</div>
+            <div className="ar-cart-items">{cart.map((line) => {
+              const { product, quantity, color, size } = line;
+              const lineKey = getCartLineKey(line);
+              return <article className="ar-cart-line" key={lineKey}><div className="ar-cart-image">{product.image && <img src={product.image} alt="" />}</div><div className="ar-cart-line-copy"><small>{product.brand}</small><strong>{product.name.replace(/^\[TEST\]\s*/, "")}</strong>{(color || size) && <span>{[color && `Color: ${color}`, size && `Size: ${size}`].filter(Boolean).join(" · ")}</span>}<span>{money(product.price)}</span><div className="ar-quantity"><button type="button" aria-label={`Remove one ${product.name}`} onClick={() => changeQuantity(lineKey, -1)}><Minus size={13} /></button><span>{quantity}</span><button type="button" aria-label={`Add one ${product.name}`} onClick={() => changeQuantity(lineKey, 1)} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={13} /></button></div></div><button className="ar-remove-line" type="button" aria-label={`Remove ${product.name}`} onClick={() => setCart((items) => items.filter((item) => getCartLineKey(item) !== lineKey))}><X size={16} /></button></article>;
+            })}</div>
             <div className="ar-cart-bottom"><div><span>SUBTOTAL</span><strong>{money(cartTotal)}</strong></div><small>Secure card checkout. Apple Pay appears automatically on supported devices.</small><button className="ar-button ar-button-light ar-checkout" type="button" onClick={() => void handleStripeCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "OPENING SECURE CHECKOUT..." : "PROCEED TO PAYMENT"} <ArrowRight size={16} /></button></div>
           </>}
         </aside>

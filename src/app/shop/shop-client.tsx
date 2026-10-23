@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -19,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
-import { mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
+import { getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
 
 const categories = ["All", "Badminton", "Tennis", "Squash", "Pickleball", "Accessories"];
@@ -29,6 +30,8 @@ const money = (amount: number) =>
   new Intl.NumberFormat("en-AE", { style: "currency", currency: "AED", maximumFractionDigits: 2 }).format(amount);
 
 function getProductType(product: StoreProduct) {
+  if (product.productType === "shoe") return "Court shoes";
+  if (product.productType === "racquet") return "Racquets";
   const name = product.name.toLowerCase();
   if (/racket|racquet/.test(name)) return "Racquets";
   if (/shoe|sneaker/.test(name)) return "Court shoes";
@@ -42,13 +45,20 @@ function validCart(value: unknown): value is CartLine[] {
   if (!Array.isArray(value)) return false;
   return value.every((line) => {
     if (!line || typeof line !== "object" || !("product" in line) || !("quantity" in line)) return false;
-    const entry = line as { product: Partial<StoreProduct>; quantity: unknown };
+    const entry = line as { product: Partial<StoreProduct>; quantity: unknown; color?: unknown; size?: unknown };
     return Number.isSafeInteger(entry.product.id)
       && typeof entry.product.name === "string"
       && typeof entry.product.brand === "string"
       && typeof entry.product.category === "string"
       && typeof entry.product.price === "number"
       && typeof entry.product.image === "string"
+      && (entry.product.productType === undefined || entry.product.productType === "shoe" || entry.product.productType === "racquet" || entry.product.productType === "other")
+      && (entry.product.sizeCategory === undefined || entry.product.sizeCategory === null || entry.product.sizeCategory === "mens" || entry.product.sizeCategory === "womens" || entry.product.sizeCategory === "kids")
+      && (entry.product.colors === undefined || (Array.isArray(entry.product.colors) && entry.product.colors.every((color) => typeof color === "string")))
+      && (entry.product.sizes === undefined || (Array.isArray(entry.product.sizes) && entry.product.sizes.every((size) => typeof size === "string")))
+      && (entry.product.unavailableSizes === undefined || (Array.isArray(entry.product.unavailableSizes) && entry.product.unavailableSizes.every((size) => typeof size === "string")))
+      && (entry.color === undefined || typeof entry.color === "string")
+      && (entry.size === undefined || typeof entry.size === "string")
       && Number.isSafeInteger(entry.quantity)
       && Number(entry.quantity) > 0;
   });
@@ -59,7 +69,18 @@ function readCart() {
   if (!stored) return [];
   const parsed: unknown = JSON.parse(stored);
   if (!validCart(parsed)) throw new Error("Your saved bag could not be read. Clear the saved bag and try again.");
-  return parsed;
+  return parsed.map((line) => ({
+    ...line,
+    product: {
+      ...line.product,
+      productType: line.product.productType ?? (/shoe|sneaker/i.test(line.product.name) ? "shoe" : /racket|racquet/i.test(line.product.name) ? "racquet" : "other"),
+      sizeCategory: line.product.sizeCategory ?? null,
+      colors: line.product.colors ?? [],
+      sizes: line.product.sizes ?? [],
+      unavailableSizes: line.product.unavailableSizes ?? [],
+      sizeStock: line.product.sizeStock ?? {},
+    },
+  }));
 }
 
 function ShopProductCard({
@@ -88,7 +109,7 @@ function ShopProductCard({
           <Heart size={17} fill={liked ? "currentColor" : "none"} />
         </button>
         <button className="ar-shop-quick-add" type="button" onClick={() => onAdd(product)} disabled={product.stock < 1}>
-          {product.stock < 1 ? "SOLD OUT" : added ? <><Check size={14} /> ADDED TO BAG</> : <>QUICK ADD <Plus size={14} /></>}
+          {product.stock < 1 ? "SOLD OUT" : added ? <><Check size={14} /> ADDED TO BAG</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={14} /></> : <>QUICK ADD <Plus size={14} /></>}
         </button>
       </div>
       <div className="ar-shop-product-copy">
@@ -101,6 +122,7 @@ function ShopProductCard({
 }
 
 export default function ShopClient({ initialCategory, initialQuery }: { initialCategory: string; initialQuery: string }) {
+  const router = useRouter();
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [catalogError, setCatalogError] = useState("");
@@ -245,8 +267,10 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     }
   }, []);
 
-  const addToCart = useCallback((product: StoreProduct, quantity = 1) => {
+  const addToCart = useCallback((product: StoreProduct, quantity = 1, options: { color?: string; size?: string } = {}) => {
     if (product.stock < 1) return false;
+    if ((product.colors.length > 0 && !options.color)
+      || ((product.sizes.length > 0 || isFootwearProduct(product)) && !options.size)) return false;
     let currentCart: CartLine[];
     try {
       currentCart = readCart();
@@ -254,12 +278,19 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
       setCartError(error instanceof Error ? error.message : "Your saved bag could not be read.");
       return false;
     }
-    const existing = currentCart.find((line) => line.product.id === product.id);
+    const newLine = { product, quantity: Math.min(quantity, product.stock, 50), ...options };
+    const newLineKey = getCartLineKey(newLine);
+    const existing = currentCart.find((line) => getCartLineKey(line) === newLineKey);
+    const otherVariantQuantity = currentCart.reduce((total, line) => (
+      line.product.id === product.id && getCartLineKey(line) !== newLineKey ? total + line.quantity : total
+    ), 0);
+    const availableForVariant = Math.min(Math.max(0, product.stock - otherVariantQuantity), 50);
+    if (availableForVariant < 1) return false;
     const nextCart = existing
-      ? currentCart.map((line) => line.product.id === product.id
-        ? { ...line, product, quantity: Math.min(line.quantity + quantity, product.stock, 50) }
+      ? currentCart.map((line) => getCartLineKey(line) === newLineKey
+        ? { ...line, product, quantity: Math.min(line.quantity + quantity, availableForVariant) }
         : line)
-      : [...currentCart, { product, quantity: Math.min(quantity, product.stock, 50) }];
+      : [...currentCart, { ...newLine, quantity: Math.min(quantity, availableForVariant) }];
     if (!persistCart(nextCart)) return false;
     setAddedIds((current) => [...current.filter((id) => id !== product.id), product.id]);
     setNotice(`${product.name.replace(/^\[TEST\]\s*/, "")} added to your bag`);
@@ -270,11 +301,16 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     return true;
   }, [persistCart]);
 
-  const changeQuantity = (id: number, delta: number) => {
+  const changeQuantity = (lineKey: string, delta: number) => {
     const nextCart = cart.flatMap((line) => {
-      if (line.product.id !== id) return [line];
-      const quantity = line.quantity + delta;
-      return quantity > 0 ? [{ ...line, quantity: Math.min(quantity, line.product.stock, 50) }] : [];
+      if (getCartLineKey(line) !== lineKey) return [line];
+      const otherVariantQuantity = cart.reduce((total, otherLine) => (
+        otherLine.product.id === line.product.id && getCartLineKey(otherLine) !== lineKey ? total + otherLine.quantity : total
+      ), 0);
+      const maximum = Math.min(Math.max(0, line.product.stock - otherVariantQuantity), 50);
+      const quantity = Math.min(line.quantity + delta, maximum);
+      if (quantity > 0) return [{ ...line, quantity }];
+      return delta < 0 ? [] : [line];
     });
     persistCart(nextCart);
   };
@@ -305,7 +341,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     setCheckoutBusy(true);
     setCheckoutError("");
     try {
-      await startStripeCheckout(cart);
+      await startStripeCheckout(cart, (href) => router.push(href));
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Unable to start secure checkout.");
       setCheckoutBusy(false);
@@ -382,7 +418,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
           {catalogState === "loading" ? <div className="ar-shop-state"><span className="ar-loader" /><p>Finding your next favourite…</p></div>
             : catalogState === "error" ? <div className="ar-shop-state ar-shop-error" role="alert"><strong>We couldn&apos;t reach the shop right now.</strong><p>{catalogError}</p><button type="button" onClick={() => window.location.reload()}>TRY AGAIN <ArrowRight size={14} /></button></div>
               : filteredProducts.length === 0 ? <div className="ar-shop-empty"><span>✳</span><h2>No gear found.</h2><p>Try adjusting the filters or searching for a different court essential.</p><button className="ar-button ar-button-outline" type="button" onClick={clearFilters}>CLEAR FILTERS <X size={14} /></button></div>
-                : <div className="ar-shop-grid">{filteredProducts.map((product) => <ShopProductCard key={product.id} product={product} onView={setSelectedProduct} onAdd={addToCart} added={addedIds.includes(product.id)} liked={wishlist.includes(product.id)} onLike={(id) => {
+                : <div className="ar-shop-grid">{filteredProducts.map((product) => <ShopProductCard key={product.id} product={product} onView={setSelectedProduct} onAdd={(item) => hasProductOptions(item) ? setSelectedProduct(item) : addToCart(item)} added={addedIds.includes(product.id)} liked={wishlist.includes(product.id)} onLike={(id) => {
                   const next = wishlist.includes(id) ? wishlist.filter((item) => item !== id) : [...wishlist, id];
                   setWishlist(next);
                   try { window.localStorage.setItem("alraed-storefront-wishlist", JSON.stringify(next)); }
@@ -399,8 +435,8 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
         <button className="ar-floating-button ar-floating-cart" type="button" onClick={() => setCartOpen(true)} aria-label={`Open shopping bag, ${cartCount} items`}><ShoppingBag size={15} />{cartCount > 0 && <b>{cartCount}</b>}</button>
       </div>
 
-      <ProductDetailDialog key={selectedProduct?.id ?? "closed"} product={selectedProduct} onClose={() => setSelectedProduct(null)} onAdd={(product, quantity) => {
-        if (addToCart(product, quantity)) {
+      <ProductDetailDialog key={selectedProduct?.id ?? "closed"} product={selectedProduct} onClose={() => setSelectedProduct(null)} onAdd={(product, quantity, options) => {
+        if (addToCart(product, quantity, options)) {
           setSelectedProduct(null);
           setCartOpen(true);
         }
@@ -414,7 +450,11 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
           {cartError && <p className="ar-shop-cart-error" role="alert">{cartError}</p>}
           {checkoutError && <p className="ar-shop-cart-error" role="alert">{checkoutError} <Link href="/account">My account</Link></p>}
           {cart.length === 0 ? <div className="ar-empty-cart"><ShoppingBag size={30} /><strong>A little room for something good.</strong><p>Your bag is waiting for its first match-ready pick.</p><button type="button" className="ar-button ar-button-light" onClick={() => setCartOpen(false)}>KEEP EXPLORING <ArrowRight size={15} /></button></div> : <>
-            <div className="ar-cart-items">{cart.map(({ product, quantity }) => <article className="ar-cart-line" key={product.id}><div className="ar-cart-image">{product.image && <img src={product.image} alt="" />}</div><div className="ar-cart-line-copy"><small>{product.brand}</small><strong>{product.name.replace(/^\[TEST\]\s*/, "")}</strong><span>{money(product.price)}</span><div className="ar-quantity"><button type="button" aria-label={`Remove one ${product.name}`} onClick={() => changeQuantity(product.id, -1)}><Minus size={13} /></button><span>{quantity}</span><button type="button" aria-label={`Add one ${product.name}`} onClick={() => changeQuantity(product.id, 1)} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={13} /></button></div></div><button className="ar-remove-line" type="button" aria-label={`Remove ${product.name}`} onClick={() => persistCart(cart.filter((line) => line.product.id !== product.id))}><X size={16} /></button></article>)}</div>
+            <div className="ar-cart-items">{cart.map((line) => {
+              const { product, quantity, color, size } = line;
+              const lineKey = getCartLineKey(line);
+              return <article className="ar-cart-line" key={lineKey}><div className="ar-cart-image">{product.image && <img src={product.image} alt="" />}</div><div className="ar-cart-line-copy"><small>{product.brand}</small><strong>{product.name.replace(/^\[TEST\]\s*/, "")}</strong><span>{[color && `Color: ${color}`, size && `Size: ${size}`].filter(Boolean).join(" · ") || money(product.price)}</span>{(color || size) && <span>{money(product.price)}</span>}<div className="ar-quantity"><button type="button" aria-label={`Remove one ${product.name}`} onClick={() => changeQuantity(lineKey, -1)}><Minus size={13} /></button><span>{quantity}</span><button type="button" aria-label={`Add one ${product.name}`} onClick={() => changeQuantity(lineKey, 1)} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={13} /></button></div></div><button className="ar-remove-line" type="button" aria-label={`Remove ${product.name}`} onClick={() => persistCart(cart.filter((item) => getCartLineKey(item) !== lineKey))}><X size={16} /></button></article>;
+            })}</div>
             <div className="ar-cart-bottom"><div><span>SUBTOTAL</span><strong>{money(cartTotal)}</strong></div><small>Secure card checkout. Apple Pay appears automatically on supported devices.</small><button className="ar-button ar-button-light ar-checkout" type="button" onClick={() => void checkout()} disabled={checkoutBusy}>{checkoutBusy ? "OPENING SECURE CHECKOUT..." : "PROCEED TO PAYMENT"} <ArrowRight size={16} /></button></div>
           </>}
         </aside>

@@ -21,6 +21,7 @@ type CustomerProfile = {
   email: string | null;
   phone: string | null;
   addresses: Address[] | null;
+  whatsapp_order_updates_opt_in: boolean;
 };
 
 type OrderItem = { id: number; product_name: string; quantity: number; unit_price: number };
@@ -59,6 +60,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [phone, setPhone] = useState("");
+  const [whatsappOrderUpdatesOptIn, setWhatsappOrderUpdatesOptIn] = useState(false);
   const [addressDraft, setAddressDraft] = useState(emptyAddress());
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [addressFormOpen, setAddressFormOpen] = useState(false);
@@ -67,9 +69,11 @@ export default function AccountPage() {
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [checkoutDetailsRequired, setCheckoutDetailsRequired] = useState(false);
 
   useEffect(() => {
     return subscribeToAuth((currentUser) => {
+      setCheckoutDetailsRequired(new URLSearchParams(window.location.search).get("checkout") === "details");
       setUser(currentUser);
       if (!currentUser) {
         setLoading(false);
@@ -96,8 +100,14 @@ export default function AccountPage() {
           const loadedProfile = profileResult.profile as CustomerProfile;
           setProfile(loadedProfile);
           setPhone(loadedProfile.phone ?? "");
+          setWhatsappOrderUpdatesOptIn(loadedProfile.whatsapp_order_updates_opt_in === true);
           setOrders(ordersResult.orders ?? []);
-          if (!loadedProfile.addresses?.length) setAddressFormOpen(true);
+          const hasDeliveryAddress = loadedProfile.addresses?.some((address) => (
+            address.is_default && address.city.trim() && address.address.trim()
+          ));
+          if (!loadedProfile.addresses?.length || (
+            new URLSearchParams(window.location.search).get("checkout") === "details" && !hasDeliveryAddress
+          )) setAddressFormOpen(true);
         } catch (loadError) {
           setError(loadError instanceof Error ? loadError.message : "Unable to load your account.");
         } finally {
@@ -141,14 +151,17 @@ export default function AccountPage() {
       const response = await fetch("/api/profile", {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, addresses }),
+        body: JSON.stringify({ phone, addresses, whatsappOrderUpdatesOptIn }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save your account.");
       setProfile(result.profile);
       setPhone(result.profile.phone ?? "");
+      setWhatsappOrderUpdatesOptIn(result.profile.whatsapp_order_updates_opt_in === true);
       setAddressFormOpen(false);
       setEditingAddressId(null);
+      setCheckoutDetailsRequired(false);
+      if (new URLSearchParams(window.location.search).has("checkout")) router.replace("/account");
       setNotice("Your account details are saved.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save your account.");
@@ -170,11 +183,12 @@ export default function AccountPage() {
       const response = await fetch("/api/profile", {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, addresses: nextAddresses }),
+        body: JSON.stringify({ phone, addresses: nextAddresses, whatsappOrderUpdatesOptIn }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to update your default address.");
       setProfile(result.profile);
+      setWhatsappOrderUpdatesOptIn(result.profile.whatsapp_order_updates_opt_in === true);
       setNotice("Default delivery address updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to update your default address.");
@@ -214,7 +228,18 @@ export default function AccountPage() {
     router.replace("/");
   };
 
-  const profileComplete = Boolean(profile?.phone && profile.addresses?.length);
+  const hasDeliveryAddress = Boolean(profile?.addresses?.some((address) => (
+    address.is_default && address.city.trim() && address.address.trim()
+  )));
+  const profileComplete = Boolean(profile?.phone?.trim() && hasDeliveryAddress);
+
+  useEffect(() => {
+    if (!checkoutDetailsRequired || loading) return;
+    const timer = window.setTimeout(() => {
+      document.querySelector(".account-field.is-required")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [checkoutDetailsRequired, loading, profile, addressFormOpen]);
 
   return (
     <main className="account-page">
@@ -250,6 +275,7 @@ export default function AccountPage() {
 
           {error && <div className="account-alert" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status"><Check size={15} /> {notice}</div>}
+          {checkoutDetailsRequired && <div className="account-alert account-checkout-required" role="alert">Please enter your details to continue with your order.</div>}
 
           {!profileComplete && <div className="account-setup-banner"><span><PackageCheck size={19} /></span><div><strong>Complete your profile to order</strong><p>Add your phone number and a delivery address. We’ll use these details automatically at checkout.</p></div></div>}
 
@@ -258,7 +284,8 @@ export default function AccountPage() {
               <div className="account-panel-heading"><div><p className="account-kicker">01 / CUSTOMER</p><h2>Personal details</h2></div><UserRound size={18} /></div>
               <label className="account-field"><span>Full name</span><input value={profile?.full_name ?? user?.displayName ?? ""} readOnly /><small>Your name comes from Google and cannot be changed here.</small></label>
               <label className="account-field"><span>Email address</span><input value={profile?.email ?? user?.email ?? ""} readOnly /></label>
-              <label className="account-field"><span>Phone number</span><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="05xxxxxxxx or +9715xxxxxxxx" autoComplete="tel" inputMode="tel" /></label>
+              <label className={`account-field${checkoutDetailsRequired && !phone.trim() ? " is-required" : ""}`}><span>Phone number</span><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="05xxxxxxxx or +9715xxxxxxxx" autoComplete="tel" inputMode="tel" /></label>
+              <label className="account-checkbox"><input type="checkbox" checked={whatsappOrderUpdatesOptIn} onChange={(event) => setWhatsappOrderUpdatesOptIn(event.target.checked)} /><span>Send order confirmations to me on WhatsApp (optional)</span></label>
             </section>
 
             <section className="account-panel addresses-panel">
@@ -276,9 +303,9 @@ export default function AccountPage() {
               {addressFormOpen && (
                 <div className="address-editor">
                   <div className="address-editor-heading"><strong>{editingAddressId ? "Edit address" : "New delivery address"}</strong><button onClick={() => { setAddressFormOpen(false); setEditingAddressId(null); }} aria-label="Cancel address editing">×</button></div>
-                  <label className="account-field"><span>Address label</span><input value={addressDraft.label} onChange={(event) => setAddressDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Home, work..." /></label>
-                  <label className="account-field"><span>City / Emirate</span><input value={addressDraft.city} onChange={(event) => setAddressDraft((current) => ({ ...current, city: event.target.value }))} placeholder="Abu Dhabi" /></label>
-                  <label className="account-field"><span>Street address</span><textarea value={addressDraft.address} onChange={(event) => setAddressDraft((current) => ({ ...current, address: event.target.value }))} placeholder="Area, street, building, apartment" rows={3} /></label>
+                  <label className={`account-field${checkoutDetailsRequired && !hasDeliveryAddress ? " is-required" : ""}`}><span>Address label</span><input value={addressDraft.label} onChange={(event) => setAddressDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Home, work..." /></label>
+                  <label className={`account-field${checkoutDetailsRequired && !hasDeliveryAddress ? " is-required" : ""}`}><span>City / Emirate</span><input value={addressDraft.city} onChange={(event) => setAddressDraft((current) => ({ ...current, city: event.target.value }))} placeholder="Abu Dhabi" /></label>
+                  <label className={`account-field${checkoutDetailsRequired && !hasDeliveryAddress ? " is-required" : ""}`}><span>Street address</span><textarea value={addressDraft.address} onChange={(event) => setAddressDraft((current) => ({ ...current, address: event.target.value }))} placeholder="Area, street, building, apartment" rows={3} /></label>
                   <label className="account-checkbox"><input type="checkbox" checked={addressDraft.is_default} onChange={(event) => setAddressDraft((current) => ({ ...current, is_default: event.target.checked }))} /><span>Set as default delivery address</span></label>
                 </div>
               )}

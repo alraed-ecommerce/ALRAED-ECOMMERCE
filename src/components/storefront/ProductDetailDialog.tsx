@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, ShoppingBag, X } from "lucide-react";
 import testProductDetails from "@/lib/test-product-details.json";
-import type { StoreProduct } from "@/lib/store-products";
+import { isFootwearProduct, type StoreProduct } from "@/lib/store-products";
 
 type ProductDetails = { description: string; specifications: Record<string, string> };
 
@@ -46,16 +46,61 @@ export default function ProductDetailDialog({
 }: {
   product: StoreProduct | null;
   onClose: () => void;
-  onAdd: (product: StoreProduct, quantity: number) => void;
+  onAdd: (product: StoreProduct, quantity: number, options: { color?: string; size?: string }) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [quantity, setQuantity] = useState(1);
+  const [selection, setSelection] = useState({ productId: 0, quantity: 1, color: "", size: "" });
+  const quantity = product && selection.productId === product.id ? selection.quantity : 1;
+  const selectedColor = product && selection.productId === product.id ? selection.color : "";
+  const selectedSize = product && selection.productId === product.id ? selection.size : "";
+  const changeQuantity = (update: number | ((value: number) => number)) => {
+    if (!product) return;
+    setSelection((current) => ({
+      productId: product.id,
+      quantity: typeof update === "function" ? update(current.productId === product.id ? current.quantity : 1) : update,
+      color: current.productId === product.id ? current.color : "",
+      size: current.productId === product.id ? current.size : "",
+    }));
+  };
+  const changeColor = (color: string) => {
+    if (!product) return;
+    setSelection((current) => ({
+      productId: product.id,
+      quantity: current.productId === product.id ? current.quantity : 1,
+      color,
+      size: current.productId === product.id ? current.size : "",
+    }));
+  };
+  const changeSize = (size: string) => {
+    if (!product) return;
+    setSelection((current) => ({
+      productId: product.id,
+      quantity: 1,
+      color: current.productId === product.id ? current.color : "",
+      size,
+    }));
+  };
   const details = product ? getProductDetails(product) : null;
+  const needsSize = product ? isFootwearProduct(product) : false;
+  const selectedStock = product
+    ? needsSize
+      ? selectedSize ? product.sizeStock[selectedSize] ?? 0 : 0
+      : product.stock
+    : 0;
+  const hasMissingOptions = Boolean(product && (
+    (product.colors.length > 0 && !needsSize && !selectedColor)
+    || (needsSize && (!product.sizes.length || !selectedSize))
+    || (product.sizes.length > 0 && !selectedSize)
+    || (product.unavailableSizes.includes(selectedSize))
+    || (needsSize && selectedStock < 1)
+  ));
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (product && !dialog.open) dialog.showModal();
+    if (product) {
+      if (!dialog.open) dialog.showModal();
+    }
     if (!product && dialog.open) dialog.close();
   }, [product]);
 
@@ -88,6 +133,40 @@ export default function ProductDetailDialog({
               <strong>{money(product.price)}</strong>
               <span className={product.stock > 0 ? "is-in-stock" : "is-out-of-stock"}>{product.stock > 0 ? `${product.stock} IN STOCK` : "CURRENTLY UNAVAILABLE"}</span>
             </div>
+            {(product.colors.length > 0 || product.sizes.length > 0 || needsSize) && (
+              <div className="ar-product-variants">
+                {product.colors.length > 0 && !needsSize && (
+                  <label>
+                    <span>COLOR</span>
+                    <select value={selectedColor} onChange={(event) => changeColor(event.target.value)} aria-label={`Choose a color for ${product.name}`}>
+                      <option value="">Choose a color</option>
+                      {product.colors.map((color) => <option key={color} value={color}>{color}</option>)}
+                    </select>
+                  </label>
+                )}
+                {needsSize && product.sizes.length > 0 ? (
+                  <label>
+                    <span>SIZE</span>
+                    <div className="ar-product-size-options" role="group" aria-label={`Choose a size for ${product.name}`}>
+                      {product.sizes.map((size) => {
+                        const availableQuantity = product.sizeStock[size] ?? 0;
+                        const unavailable = product.unavailableSizes.includes(size) || availableQuantity < 1;
+                        return <button key={size} type="button" className={selectedSize === size ? "is-selected" : ""} aria-pressed={selectedSize === size} aria-label={`${size}${unavailable ? ", out of stock" : `, ${availableQuantity} available`}`} disabled={unavailable} onClick={() => changeSize(size)}>{size}<span>{unavailable ? "OUT OF STOCK" : `${availableQuantity} AVAILABLE`}</span></button>;
+                      })}
+                    </div>
+                  </label>
+                ) : product.sizes.length > 0 ? (
+                  <label>
+                    <span>SIZE</span>
+                    <select value={selectedSize} onChange={(event) => changeSize(event.target.value)} aria-label={`Choose a size for ${product.name}`}>
+                      <option value="">Choose a size</option>
+                      {product.sizes.map((size) => <option key={size} value={size} disabled={product.unavailableSizes.includes(size)}>{size}{product.unavailableSizes.includes(size) ? " — Out of stock" : ""}</option>)}
+                    </select>
+                  </label>
+                ) : needsSize ? null : null}
+                {needsSize && product.sizes.length === 0 && <p role="status">Sizes have not been added yet. Please check back soon.</p>}
+              </div>
+            )}
             <div className="ar-product-specs">
               <div className="ar-product-specs-heading"><h3>Product details</h3><span>{Object.keys(details.specifications).length} DETAILS</span></div>
               {Object.entries(details.specifications).map(([label, value]) => (
@@ -96,11 +175,11 @@ export default function ProductDetailDialog({
             </div>
             <div className="ar-product-detail-buy">
               <div className="ar-detail-quantity" aria-label="Choose quantity">
-                <button type="button" aria-label="Decrease quantity" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1}><Minus size={15} /></button>
+                <button type="button" aria-label="Decrease quantity" onClick={() => changeQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1}><Minus size={15} /></button>
                 <span aria-live="polite">{quantity}</span>
-                <button type="button" aria-label="Increase quantity" onClick={() => setQuantity((value) => Math.min(Math.min(product.stock, 50), value + 1))} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={15} /></button>
+                <button type="button" aria-label="Increase quantity" onClick={() => changeQuantity((value) => Math.min(Math.min(selectedStock, 50), value + 1))} disabled={quantity >= Math.min(selectedStock, 50)}><Plus size={15} /></button>
               </div>
-              <button className="ar-button ar-button-light ar-product-detail-add" type="button" onClick={() => onAdd(product, quantity)} disabled={product.stock < 1}>
+              <button className="ar-button ar-button-light ar-product-detail-add" type="button" onClick={() => onAdd(product, quantity, { color: needsSize ? undefined : selectedColor || undefined, size: selectedSize || undefined })} disabled={selectedStock < 1 || quantity > selectedStock || hasMissingOptions}>
                 {product.stock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
               </button>
             </div>

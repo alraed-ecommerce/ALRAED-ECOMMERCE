@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/server-auth";
 import { getStripe } from "@/lib/stripe";
+import { isSuccessfulStripePaymentEvent, sendPaidOrderNotifications } from "@/lib/order-notifications";
 
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   try {
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       const session = event.data.object as Stripe.Checkout.Session;
-      if (session.payment_status !== "paid") return NextResponse.json({ received: true });
+      if (!isSuccessfulStripePaymentEvent(event.type, session.payment_status)) return NextResponse.json({ received: true });
 
       const orderId = session.metadata?.order_id;
       if (!orderId) {
@@ -60,6 +61,32 @@ export async function POST(request: Request) {
         console.error("Unable to confirm paid Stripe order.", error.message);
         return NextResponse.json({ error: "Unable to confirm payment and order inventory." }, { status: 500 });
       }
+
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("id, user_id, customer_name, customer_phone, total, status, stripe_paid_at, order_items(product_name, quantity, unit_price)")
+        .eq("id", orderId)
+        .single();
+      if (orderError || !order) {
+        console.error("Unable to load paid order for confirmation.", orderError?.message ?? orderId);
+        return NextResponse.json({ error: "Unable to load the confirmed order for customer notification." }, { status: 500 });
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("email, whatsapp_order_updates_opt_in")
+        .eq("id", order.user_id)
+        .single();
+      if (profileError || !profile) {
+        console.error("Unable to load paid order customer contact details.", profileError?.message ?? orderId);
+        return NextResponse.json({ error: "Unable to load customer details for order notification." }, { status: 500 });
+      }
+
+      await sendPaidOrderNotifications(supabase, {
+        ...order,
+        email: profile.email,
+        whatsapp_order_updates_opt_in: profile.whatsapp_order_updates_opt_in === true,
+      });
     }
 
     if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {

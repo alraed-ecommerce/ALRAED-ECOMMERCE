@@ -38,20 +38,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Your shopping bag is empty or contains too many items." }, { status: 400 });
     }
 
-    const quantities = new Map<number, number>();
+    const quantitiesByProduct = new Map<number, number>();
+    const itemsByVariant = new Map<string, { product_id: number; quantity: number; color?: string; size?: string }>();
     for (const value of body.products) {
       if (!value || typeof value !== "object") {
         return NextResponse.json({ error: "One or more items in your bag are invalid." }, { status: 400 });
       }
-      const item = value as { product?: { id?: unknown }; quantity?: unknown };
+      const item = value as { product?: { id?: unknown }; quantity?: unknown; color?: unknown; size?: unknown };
       const productId = Number(item.product?.id);
       const quantity = Number(item.quantity);
-      if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity < 1 || quantity > 50) {
+      const color = item.color === undefined ? undefined : typeof item.color === "string" ? item.color.trim() : null;
+      const size = item.size === undefined ? undefined : typeof item.size === "string" ? item.size.trim() : null;
+      if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity < 1 || quantity > 50
+        || color === null || size === null || (color !== undefined && (!color || color.length > 40))
+        || (size !== undefined && (!size || size.length > 40))) {
         return NextResponse.json({ error: "One or more items in your bag are invalid." }, { status: 400 });
       }
-      const combinedQuantity = (quantities.get(productId) ?? 0) + quantity;
+      const combinedQuantity = (quantitiesByProduct.get(productId) ?? 0) + quantity;
       if (combinedQuantity > 50) return NextResponse.json({ error: "The quantity for one product cannot exceed 50." }, { status: 400 });
-      quantities.set(productId, combinedQuantity);
+      quantitiesByProduct.set(productId, combinedQuantity);
+      const variantKey = JSON.stringify([productId, color ?? null, size ?? null]);
+      const existing = itemsByVariant.get(variantKey);
+      itemsByVariant.set(variantKey, {
+        product_id: productId,
+        quantity: (existing?.quantity ?? 0) + quantity,
+        ...(color ? { color } : {}),
+        ...(size ? { size } : {}),
+      });
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -79,17 +92,21 @@ export async function POST(request: Request) {
       p_city: shippingAddress.city,
       p_address: shippingAddress.address,
       p_notes: typeof body.notes === "string" ? body.notes.trim().slice(0, 500) || null : null,
-      p_items: Array.from(quantities, ([product_id, quantity]) => ({ product_id, quantity }))
-        .sort((a, b) => a.product_id - b.product_id),
+      p_variant_schema_version: 2,
+      p_items: Array.from(itemsByVariant.values())
+        .sort((a, b) => a.product_id - b.product_id || (a.color ?? "").localeCompare(b.color ?? "") || (a.size ?? "").localeCompare(b.size ?? "")),
     });
 
     if (orderError) {
       if (orderError.code === "42703" || orderError.code === "42883" || orderError.code === "PGRST202") {
-        return NextResponse.json({ error: "Checkout database setup is incomplete. Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql in the Supabase SQL Editor." }, { status: 503 });
+        return NextResponse.json({ error: "Checkout database setup is incomplete. Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql, then SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql in the Supabase SQL Editor." }, { status: 503 });
       }
       if (orderError.message.includes("INSUFFICIENT_STOCK:")) return NextResponse.json({ error: "A product no longer has enough stock. Update your bag and try again." }, { status: 409 });
+      if (orderError.message.includes("INSUFFICIENT_SIZE_STOCK:")) return NextResponse.json({ error: "That shoe size no longer has enough pairs. Update your bag and try again." }, { status: 409 });
       if (orderError.message.includes("PRODUCT_UNAVAILABLE:")) return NextResponse.json({ error: "A product is no longer available. Refresh the store and try again." }, { status: 409 });
       if (orderError.message.includes("INVALID_ORDER_ITEMS")) return NextResponse.json({ error: "One or more items in your bag are invalid." }, { status: 400 });
+      if (orderError.message.includes("PRODUCT_VARIANT_REQUIRED")) return NextResponse.json({ error: "Choose a color and size for every item in your bag." }, { status: 400 });
+      if (orderError.message.includes("INVALID_PRODUCT_VARIANT")) return NextResponse.json({ error: "A selected color or size is no longer available. Refresh the store and try again." }, { status: 409 });
       console.error("Unable to create Stripe checkout order.", orderError.message);
       return NextResponse.json({ error: "Unable to create your order right now." }, { status: 500 });
     }

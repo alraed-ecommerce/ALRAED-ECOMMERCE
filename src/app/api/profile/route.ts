@@ -14,11 +14,11 @@ export async function GET(request: Request) {
     const { data: profile, error } = await supabase
       .from("profiles")
       .upsert({ firebase_uid: identity.uid, email: identity.email, full_name: identity.name }, { onConflict: "firebase_uid" })
-      .select("id, firebase_uid, full_name, email, phone, addresses")
+      .select("id, firebase_uid, full_name, email, phone, addresses, whatsapp_order_updates_opt_in")
       .single();
 
     if (error?.code === "42703") {
-      return NextResponse.json({ error: "Account setup is incomplete. Run SUPABASE_ACCOUNT_MIGRATION.sql in the Supabase SQL Editor, then refresh this page." }, { status: 503 });
+      return NextResponse.json({ error: "Account setup is incomplete. Run SUPABASE_ACCOUNT_MIGRATION.sql and SUPABASE_ORDER_NOTIFICATION_MIGRATION.sql in the Supabase SQL Editor, then refresh this page." }, { status: 503 });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ profile });
@@ -35,7 +35,7 @@ export async function PUT(request: Request) {
     const supabase = createAdminSupabase();
     if (!supabase) return NextResponse.json({ error: "Account storage is not configured." }, { status: 500 });
 
-    const body = await request.json() as { phone?: unknown; addresses?: unknown };
+    const body = await request.json() as { phone?: unknown; addresses?: unknown; whatsappOrderUpdatesOptIn?: unknown };
     const phone = typeof body.phone === "string" ? body.phone.trim() : "";
     const digits = phone.replace(/\D/g, "");
     if (digits.length < 9 || digits.length > 15) {
@@ -72,12 +72,13 @@ export async function PUT(request: Request) {
         full_name: identity.name,
         phone,
         addresses: normalizedAddresses,
+        whatsapp_order_updates_opt_in: body.whatsappOrderUpdatesOptIn === true,
       }, { onConflict: "firebase_uid" })
-      .select("id, firebase_uid, full_name, email, phone, addresses")
+      .select("id, firebase_uid, full_name, email, phone, addresses, whatsapp_order_updates_opt_in")
       .single();
 
     if (error?.code === "42703") {
-      return NextResponse.json({ error: "Account setup is incomplete. Run SUPABASE_ACCOUNT_MIGRATION.sql in the Supabase SQL Editor, then refresh this page." }, { status: 503 });
+      return NextResponse.json({ error: "Account setup is incomplete. Run SUPABASE_ACCOUNT_MIGRATION.sql and SUPABASE_ORDER_NOTIFICATION_MIGRATION.sql in the Supabase SQL Editor, then refresh this page." }, { status: 503 });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ profile });

@@ -39,7 +39,7 @@ Checkout uses Stripe-hosted Checkout in AED. Customers sign in, save a phone num
 
 ### Database setup
 
-In the Supabase SQL Editor, run `SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql` after the existing account and order-safety migrations (and after `SUPABASE_ZOHO_STOCK_MIGRATION.sql` if Zoho stock sync is enabled). It adds Stripe payment fields and service-only RPCs. Items are reserved while Checkout is open so two customers cannot buy the same remaining stock. The `products.stock` value is reduced only after a signed Stripe payment webhook confirms the exact order amount; cancelled or expired unpaid sessions release their reservations. The Zoho sync RPC also accounts for confirmed Stripe sales since its previous successful sync so a stale Zoho quantity does not immediately restore stock deducted by this site.
+In the Supabase SQL Editor, run `SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql` after the existing account and order-safety migrations (and after `SUPABASE_ZOHO_STOCK_MIGRATION.sql` if Zoho stock sync is enabled). Then run the latest `SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql`. In the admin dashboard, shoe stock is entered per UK size with plus/minus controls; the product total is calculated from those quantities. Customers see each size's available quantity, and zero-stock sizes are greyed out and cannot be selected. Shoe colors are separate product listings; racquets can still have color options. Size stock is reserved at checkout and deducted per size only after a signed Stripe payment webhook confirms payment. If this migration was already run, run the latest version again. Existing shoe stock cannot be safely assigned to sizes automatically, so allocate the actual quantities in the admin dashboard after migration. The Zoho stock sync remains for non-shoe aggregate stock; shoe inventory is managed by size in the admin dashboard.
 
 ### Local test setup
 
@@ -57,7 +57,33 @@ In the Supabase SQL Editor, run `SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql` after t
 3. Deploy/redeploy after adding the variables. Run a full test-mode order against the deployed site and verify both the customer order history and admin order details.
 4. Before accepting live payments, complete Stripe account verification, confirm with Stripe and ADCB that the intended payout account is acceptable, switch to live Stripe keys, and create a separate live-mode webhook endpoint and signing secret. Keep test and live credentials separate.
 
-The admin dashboard displays the confirmed payment method, paid time, and Stripe PaymentIntent reference. The application does not store card numbers or CVCs. This setup does not send a separate payment email; Stripe's receipt settings can be configured in Stripe Dashboard if email receipts are desired.
+The admin dashboard displays the confirmed payment method, paid time, and Stripe PaymentIntent reference. The application does not store card numbers or CVCs.
+
+### Order confirmation notifications
+
+Customer notifications run only from the signed Stripe webhook after the order has been marked `paid` by `mark_stripe_order_paid`. Per-channel notification state is stored on the order and claimed atomically, so a repeated webhook does not resend completed notifications. Failed deliveries are recorded and retried on a later webhook; abandoned `sending` claims can be retried after 15 minutes. Orders with no customer email are recorded as skipped without affecting the paid order.
+
+1. Apply `SUPABASE_ORDER_NOTIFICATION_MIGRATION.sql` after the Stripe checkout and product-variants migrations. It adds delivery state columns and the optional WhatsApp consent field; no existing order/profile data is removed.
+2. Create a Resend account, verify the sending domain/address, and add these server-only variables to `.env.local` and the production host:
+
+   ```env
+   RESEND_API_KEY=re_...
+   EMAIL_FROM=Al Raed Sports <orders@your-verified-domain.example>
+   ```
+
+   Resend is used directly through its server API; its key and sender are never exposed to the browser. Email requests include a stable order-based idempotency key.
+3. Restart the app and use Stripe test mode plus the Stripe CLI webhook forwarding described above. Run `node --experimental-strip-types --test scripts/test-order-notifications.mjs` for local delivery-gate, duplicate, missing-email, and provider-failure tests.
+4. Optional WhatsApp confirmations use the official Meta WhatsApp Cloud API. Create a WhatsApp Business Platform app/registered sending number, generate a server-side access token with message permissions, and submit an approved **utility** template. Configure the approved template with four body variables in this order: customer name, order number, amount, confirmation message. Add:
+
+   ```env
+   WHATSAPP_ACCESS_TOKEN=...
+   WHATSAPP_PHONE_NUMBER_ID=...
+   WHATSAPP_TEMPLATE_NAME=order_confirmation
+   WHATSAPP_TEMPLATE_LANGUAGE=en
+   WHATSAPP_GRAPH_API_VERSION=v26.0
+   ```
+
+   Customers must explicitly opt in under Account → Personal details before WhatsApp messages are sent. If WhatsApp is not configured or a customer has not opted in, only WhatsApp delivery is skipped; payment confirmation and email behavior are unaffected. A WhatsApp API failure is recorded independently and will not cause an already-sent email to be sent again.
 
 ## Deploy on Vercel
 
