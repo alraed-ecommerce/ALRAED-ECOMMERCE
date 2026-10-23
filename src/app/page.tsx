@@ -657,6 +657,12 @@ export default function Home() {
 
       <div className="ar-subnav" aria-label="Shop links"><span>THE UAE&apos;S HOME FOR RACQUET SPORTS</span><a href="#service">SHOP WITH CONFIDENCE <ArrowUpRight size={12} /></a></div>
 
+      <aside className="ar-preview-notice" aria-label="Website development status">
+        <span className="ar-preview-label">DEVELOPMENT PREVIEW</span>
+        <h2>THIS WEBSITE IS UNDER DEVELOPMENT</h2>
+        <p>Products, options and checkout are for demonstration only. Orders and payments are not currently being processed.</p>
+      </aside>
+
       <section className="ar-hero" data-campaign-layout={campaign.layout ?? "standard"} aria-label="Featured campaign">
         <img key={campaign.image} className={`ar-hero-image${campaign.layout ? ` ar-hero-image-${campaign.layout}` : ""}`} src={campaign.image} alt="" />
         <div className="ar-hero-shade" />
