@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
-import { getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
+import { getBrandOptions, getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, normalizeBrand, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
 
 const categories = ["All", "Badminton", "Tennis", "Squash", "Pickleball", "Accessories"];
@@ -222,12 +222,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
   }, [products, category]);
 
   const brandOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    products.filter((product) => category === "All" || product.category === category).forEach((product) => {
-      const brand = product.brand || "AL RAED SPORTS";
-      counts.set(brand, (counts.get(brand) ?? 0) + 1);
-    });
-    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return getBrandOptions(products, category);
   }, [products, category]);
 
   const filteredProducts = useMemo(() => {
@@ -238,7 +233,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
       const matchesCategory = category === "All" || product.category === category;
       const matchesSearch = !normalizedQuery || `${product.name} ${product.brand} ${product.category} ${getProductType(product)}`.toLowerCase().includes(normalizedQuery);
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(getProductType(product));
-      const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(product.brand || "AL RAED SPORTS");
+      const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(normalizeBrand(product.brand || "AL RAED SPORTS"));
       const matchesStock = showOutOfStock || product.stock > 0;
       return matchesCategory && matchesSearch && matchesType && matchesBrand && matchesStock && product.price >= minimum && product.price <= maximum;
     });
@@ -397,8 +392,8 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
           </details>
           <details className="ar-shop-filter-group" open>
             <summary>Brand <ChevronDown size={14} /></summary>
-            <div className="ar-shop-filter-options">{brandOptions.map(([brand, count]) => (
-              <label key={brand}><input type="checkbox" checked={selectedBrands.includes(brand)} onChange={() => toggleValue(brand, selectedBrands, setSelectedBrands)} /><span>{brand}</span><small>{count}</small></label>
+            <div className="ar-shop-filter-options">{brandOptions.map(([brandKey, brand, count]) => (
+              <label key={brandKey}><input type="checkbox" checked={selectedBrands.includes(brandKey)} onChange={() => toggleValue(brandKey, selectedBrands, setSelectedBrands)} /><span>{brand}</span><small>{count}</small></label>
             ))}</div>
           </details>
           <div className="ar-shop-sidebar-note"><span>✳</span><p>Chosen for the court.<br />Ready for your next game.</p></div>

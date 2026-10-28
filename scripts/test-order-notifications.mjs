@@ -152,6 +152,25 @@ test("WhatsApp stays disabled without explicit customer consent", async () => {
   assert.equal(store.status.whatsapp, "skipped");
 });
 
+test("unconfigured providers stay pending and can deliver after configuration", async () => {
+  const store = createStore();
+  let requestCount = 0;
+  const fetcher = async (url) => {
+    requestCount += 1;
+    return url.includes("resend.com") ? response({ id: "email-id" }) : response({ messages: [{ id: "wa-id" }] });
+  };
+
+  await sendPaidOrderNotifications(store, paidOrder, { fetcher, env: {} });
+
+  assert.deepEqual(store.status, { email: "pending", whatsapp: "pending" });
+  assert.equal(requestCount, 0);
+
+  await sendPaidOrderNotifications(store, paidOrder, { fetcher, env: configuredEnv });
+
+  assert.deepEqual(store.status, { email: "sent", whatsapp: "sent" });
+  assert.equal(requestCount, 2);
+});
+
 test("provider failure is marked failed so a Stripe webhook retry can try again", async () => {
   const store = createStore();
 

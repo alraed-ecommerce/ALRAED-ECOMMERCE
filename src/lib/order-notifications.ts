@@ -84,25 +84,50 @@ async function deliverChannel(
   fetcher: Fetcher,
   env: NotificationEnvironment,
 ) {
-  if (!await claimNotification(supabase, order.id, channel)) return;
-
   const customerName = order.customer_name.trim() || "Customer";
   const number = orderNumber(order.id);
   const total = amount(Number(order.total));
+  const recipient = order.customer_phone ? normalizeWhatsAppPhone(order.customer_phone) : null;
+  const customerEmail = order.email?.trim();
+
+  if (channel === "email") {
+    if (!customerEmail) {
+      if (!await claimNotification(supabase, order.id, channel)) return;
+      console.warn(`Skipping order confirmation email for ${order.id}: the customer has no email address.`);
+      await finishNotification(supabase, order.id, channel, "skipped", null, "Customer email is missing.");
+      return;
+    }
+    if (!env.RESEND_API_KEY || !env.EMAIL_FROM?.trim()) {
+      console.warn(`Leaving order confirmation email pending for ${order.id}: Resend is not fully configured.`);
+      return;
+    }
+  } else {
+    if (!order.whatsapp_order_updates_opt_in) {
+      if (!await claimNotification(supabase, order.id, channel)) return;
+      await finishNotification(supabase, order.id, channel, "skipped", null, "Customer has not opted in to WhatsApp order updates.");
+      return;
+    }
+    if (!recipient) {
+      if (!await claimNotification(supabase, order.id, channel)) return;
+      await finishNotification(supabase, order.id, channel, "skipped", null, "Customer phone number is missing or invalid.");
+      return;
+    }
+    const config = [
+      env.WHATSAPP_ACCESS_TOKEN,
+      env.WHATSAPP_PHONE_NUMBER_ID,
+      env.WHATSAPP_TEMPLATE_NAME,
+      env.WHATSAPP_GRAPH_API_VERSION,
+    ];
+    if (config.every((value) => !value?.trim())) {
+      console.warn(`Leaving WhatsApp order confirmation pending for ${order.id}: WhatsApp Cloud API is not configured.`);
+      return;
+    }
+  }
+
+  if (!await claimNotification(supabase, order.id, channel)) return;
+
   try {
     if (channel === "email") {
-      if (!order.email?.trim()) {
-        console.warn(`Skipping order confirmation email for ${order.id}: the customer has no email address.`);
-        await finishNotification(supabase, order.id, channel, "skipped", null, "Customer email is missing.");
-        return;
-      }
-      if (!env.RESEND_API_KEY) {
-        console.warn(`Skipping order confirmation email for ${order.id}: RESEND_API_KEY is not configured.`);
-        await finishNotification(supabase, order.id, channel, "skipped", null, "Resend is not configured.");
-        return;
-      }
-      if (!env.EMAIL_FROM?.trim()) throw new Error("EMAIL_FROM must be configured when RESEND_API_KEY is set.");
-
       const escapedName = escapeHtml(customerName);
       const escapedNumber = escapeHtml(number);
       const escapedTotal = escapeHtml(total);
@@ -115,7 +140,7 @@ async function deliverChannel(
         },
         body: JSON.stringify({
           from: env.EMAIL_FROM,
-          to: [order.email.trim()],
+          to: [customerEmail],
           subject: `Order #${number} confirmed`,
           text: `Hello ${customerName},\n\nOrder #${number}\nPayment status: Paid\nOrder amount: ${total}\n\n${confirmationMessage}`,
           html: `<p>Hello ${escapedName},</p><p>${escapeHtml(confirmationMessage)}</p><dl><dt>Order number</dt><dd>#${escapedNumber}</dd><dt>Payment status</dt><dd>Paid</dd><dt>Order amount</dt><dd>${escapedTotal}</dd></dl>`,
@@ -127,23 +152,11 @@ async function deliverChannel(
       return;
     }
 
-    if (!order.whatsapp_order_updates_opt_in) {
-      await finishNotification(supabase, order.id, channel, "skipped", null, "Customer has not opted in to WhatsApp order updates.");
-      return;
-    }
-    const recipient = order.customer_phone ? normalizeWhatsAppPhone(order.customer_phone) : null;
-    if (!recipient) {
-      await finishNotification(supabase, order.id, channel, "skipped", null, "Customer phone number is missing or invalid.");
-      return;
-    }
+    if (!recipient) throw new Error("Customer phone number is missing or invalid.");
     const accessToken = env.WHATSAPP_ACCESS_TOKEN;
     const phoneNumberId = env.WHATSAPP_PHONE_NUMBER_ID;
     const templateName = env.WHATSAPP_TEMPLATE_NAME;
     const graphVersion = env.WHATSAPP_GRAPH_API_VERSION;
-    if (!accessToken && !phoneNumberId && !templateName && !graphVersion) {
-      await finishNotification(supabase, order.id, channel, "skipped", null, "WhatsApp notifications are not configured.");
-      return;
-    }
     if (!accessToken || !phoneNumberId || !templateName || !graphVersion) {
       throw new Error("Set all WhatsApp Cloud API configuration variables before enabling WhatsApp notifications.");
     }

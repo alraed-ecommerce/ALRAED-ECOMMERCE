@@ -61,10 +61,10 @@ The admin dashboard displays the confirmed payment method, paid time, and Stripe
 
 ### Order confirmation notifications
 
-Customer notifications run only from the signed Stripe webhook after the order has been marked `paid` by `mark_stripe_order_paid`. Per-channel notification state is stored on the order and claimed atomically, so a repeated webhook does not resend completed notifications. Failed deliveries are recorded and retried on a later webhook; abandoned `sending` claims can be retried after 15 minutes. Orders with no customer email are recorded as skipped without affecting the paid order.
+Customer notifications run only from the signed Stripe webhook after the order has been marked `paid` by `mark_stripe_order_paid`. Per-channel notification state is stored on the order and claimed atomically, so a repeated webhook does not resend completed notifications. Failed deliveries are recorded and retried on a later webhook; abandoned `sending` claims can be retried after 15 minutes. If a provider is not configured, its channel stays pending so a Stripe webhook can be resent after configuration. Orders with no customer email are recorded as skipped without affecting the paid order.
 
 1. Apply `SUPABASE_ORDER_NOTIFICATION_MIGRATION.sql` after the Stripe checkout and product-variants migrations. It adds delivery state columns and the optional WhatsApp consent field; no existing order/profile data is removed.
-2. Create a Resend account, verify the sending domain/address, and add these server-only variables to `.env.local` and the production host:
+2. Create a Resend account, verify the sending domain/address, and add these server-only variables to `.env.local` and the production host. `.env.example` contains placeholder entries for local setup:
 
    ```env
    RESEND_API_KEY=re_...
@@ -73,7 +73,7 @@ Customer notifications run only from the signed Stripe webhook after the order h
 
    Resend is used directly through its server API; its key and sender are never exposed to the browser. Email requests include a stable order-based idempotency key.
 3. Restart the app and use Stripe test mode plus the Stripe CLI webhook forwarding described above. Run `node --experimental-strip-types --test scripts/test-order-notifications.mjs` for local delivery-gate, duplicate, missing-email, and provider-failure tests.
-4. Optional WhatsApp confirmations use the official Meta WhatsApp Cloud API. Create a WhatsApp Business Platform app/registered sending number, generate a server-side access token with message permissions, and submit an approved **utility** template. Configure the approved template with four body variables in this order: customer name, order number, amount, confirmation message. Add:
+4. Optional WhatsApp confirmations use the official Meta WhatsApp Cloud API. Create a WhatsApp Business Platform app/registered sending number, generate a server-side access token with message permissions, and submit an approved **utility** template. Configure the approved template with four body variables in this order: customer name, order number, amount, confirmation message. Add the values to `.env.local` and the production host:
 
    ```env
    WHATSAPP_ACCESS_TOKEN=...
@@ -83,7 +83,7 @@ Customer notifications run only from the signed Stripe webhook after the order h
    WHATSAPP_GRAPH_API_VERSION=v26.0
    ```
 
-   Customers must explicitly opt in under Account → Personal details before WhatsApp messages are sent. If WhatsApp is not configured or a customer has not opted in, only WhatsApp delivery is skipped; payment confirmation and email behavior are unaffected. A WhatsApp API failure is recorded independently and will not cause an already-sent email to be sent again.
+   Customers must explicitly opt in under Account → Personal details before WhatsApp messages are sent. If WhatsApp is not configured, delivery stays pending for a later webhook retry; if a customer has not opted in, only WhatsApp delivery is skipped. Payment confirmation and email behavior are unaffected. A WhatsApp API failure is recorded independently and will not cause an already-sent email to be sent again.
 
 ## Deploy on Vercel
 

@@ -19,6 +19,32 @@ export type StoreProduct = {
 
 export type CartLine = { product: StoreProduct; quantity: number; color?: string; size?: string };
 
+export function normalizeBrand(brand: string) {
+  return (brand.trim() || "AL RAED SPORTS").toLocaleLowerCase();
+}
+
+export function getBrandOptions(products: StoreProduct[], category: string) {
+  const brands = new Map<string, { label: string; count: number }>();
+  for (const product of products) {
+    if (category !== "All" && product.category !== category) continue;
+
+    const rawBrand = product.brand.trim() || "AL RAED SPORTS";
+    const key = normalizeBrand(rawBrand);
+    const existing = brands.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (existing.label === existing.label.toLocaleUpperCase() && rawBrand !== rawBrand.toLocaleUpperCase()) {
+        existing.label = rawBrand;
+      }
+    } else {
+      brands.set(key, { label: rawBrand, count: 1 });
+    }
+  }
+  return [...brands.entries()]
+    .map(([key, { label, count }]) => [key, label, count] as const)
+    .sort((a, b) => a[1].localeCompare(b[1]));
+}
+
 export function isFootwearProduct(product: Pick<StoreProduct, "name"> & Partial<Pick<StoreProduct, "productType">>) {
   return product.productType === "shoe" || /shoe|sneaker/i.test(product.name);
 }
