@@ -188,11 +188,65 @@ const stringingWhatsAppUrl = (() => {
   return url.toString();
 })();
 
-const stringingVideos: Array<{ sport: string; title: string; image: string; video?: string }> = [
-  { sport: "STRINGING WITH JABIR", title: "A closer look at the process", image: "/playerimage.jpg", video: "/jabir-stringing.mp4" },
-  { sport: "STRINGING WITH MEHDIN", title: "Precision, frame by frame", image: "/tennisaccessories.jpg", video: "/mehdin-stringing.mp4" },
-  { sport: "BEHIND THE SCENES", title: "The stringing process", image: "/badminton-campaign.jpg", video: "/jabir2-stringing.mp4" },
+const stringingVideos: Array<{ title: string; image: string; video?: string }> = [
+  { title: "A closer look at the process", image: "/playerimage.jpg", video: "/jabir-stringing.mp4" },
+  { title: "Precision, frame by frame", image: "/tennisaccessories.jpg", video: "/mehdin-stringing.mp4" },
+  { title: "The stringing process", image: "/badminton-campaign.jpg", video: "/jabir2-stringing.mp4" },
 ];
+
+function StringingVideo({ src, poster, title }: { src: string; poster: string; title: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let disposed = false;
+    const play = async () => {
+      try {
+        await video.play();
+        if (!disposed) setAutoplayBlocked(false);
+      } catch (error) {
+        if (disposed || (error instanceof DOMException && error.name === "AbortError")) return;
+        setAutoplayBlocked(true);
+      }
+    };
+
+    if (!("IntersectionObserver" in window)) {
+      void play();
+      return () => {
+        disposed = true;
+        video.pause();
+      };
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
+        void play();
+      } else {
+        video.pause();
+      }
+    }, { threshold: [0, 0.2] });
+
+    observer.observe(video);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      video.pause();
+    };
+  }, []);
+
+  return (
+    <>
+      <video ref={videoRef} autoPlay muted playsInline loop preload="metadata" poster={poster} aria-label={`${title} video`}>
+        <source src={src} type="video/mp4" />
+        Your browser does not support video playback.
+      </video>
+      {autoplayBlocked && <span className="ar-stringing-video-error" role="status">Automatic playback is blocked by your browser.</span>}
+    </>
+  );
+}
 
 function ProductTile({
   product,
@@ -840,10 +894,7 @@ export default function Home() {
             <article className="ar-stringing-video-card" key={item.title}>
               <div className="ar-stringing-video-frame">
                 {item.video ? (
-                  <video autoPlay muted playsInline loop preload="metadata" poster={item.image} aria-label={`${item.title} video`}>
-                    <source src={item.video} type="video/mp4" />
-                    Your browser does not support video playback.
-                  </video>
+                  <StringingVideo src={item.video} poster={item.image} title={item.title} />
                 ) : (
                   <div className="ar-stringing-video-placeholder">
                     <Image src={item.image} alt="" width={900} height={580} loading="lazy" />
@@ -852,7 +903,7 @@ export default function Home() {
                 )}
                 <span className="ar-stringing-video-index">0{index + 1}</span>
               </div>
-              <div className="ar-stringing-video-copy"><span>{item.sport}</span><h4>{item.title}</h4></div>
+              <div className="ar-stringing-video-copy"><h4>{item.title}</h4></div>
             </article>
           ))}
         </div>

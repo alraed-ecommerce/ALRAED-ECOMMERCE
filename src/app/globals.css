@@ -3266,8 +3266,17 @@ textarea { transition-duration: .2s; }
   z-index: 1;
 }
 .ar-stringing-video-copy { padding: 11px 1px 0; }
-.ar-stringing-video-copy > span { color: var(--muted); font-size: 7px; font-weight: 700; letter-spacing: .15em; }
-.ar-stringing-video-copy h4 { color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 500; margin: 4px 0 0; }
+.ar-stringing-video-copy h4 { color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 500; margin: 0; }
+.ar-stringing-video-error {
+  background: rgba(8, 13, 20, .78);
+  bottom: 12px;
+  color: #fff;
+  font-size: 9px;
+  left: 12px;
+  padding: 8px 10px;
+  position: absolute;
+  right: 12px;
+}
 .ar-stringing a:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
 @media (max-width: 760px) {
   .ar-stringing-heading { align-items: flex-start; flex-direction: column; gap: 22px; }
