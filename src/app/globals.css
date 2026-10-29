@@ -2606,3 +2606,223 @@ textarea { transition-duration: .2s; }
     display: none;
   }
 }
+
+.admin-dashboard .admin-poster-preview {
+  aspect-ratio: 16 / 9;
+  background: #080d14;
+  border: 1px solid rgba(159, 197, 237, .25);
+  border-radius: 12px;
+  color: #f5f7fa;
+  isolation: isolate;
+  max-height: 380px;
+  min-height: 250px;
+  overflow: hidden;
+  position: relative;
+}
+.admin-dashboard .admin-poster-preview-image {
+  height: 100%;
+  object-fit: cover;
+  object-position: center 43%;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 76%;
+}
+.admin-dashboard .admin-poster-preview-empty {
+  align-content: center;
+  color: #aab8ca;
+  display: grid;
+  gap: 8px;
+  height: 100%;
+  justify-items: center;
+  position: absolute;
+  text-align: center;
+  width: 100%;
+}
+.admin-dashboard .admin-poster-preview-shade {
+  background: linear-gradient(90deg, #080d14 1%, rgba(8, 13, 20, .96) 24%, rgba(8, 13, 20, .7) 50%, rgba(8, 13, 20, .12) 100%), linear-gradient(0deg, rgba(4, 8, 13, .52), transparent 55%);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.admin-dashboard .admin-poster-preview-copy {
+  left: 7%;
+  max-width: 68%;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+.admin-dashboard .admin-poster-preview-eyebrow {
+  align-items: center;
+  color: #9fcaff;
+  display: flex;
+  font-size: 7px;
+  font-weight: 700;
+  gap: 6px;
+  letter-spacing: .16em;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+.admin-dashboard .admin-poster-preview-eyebrow span {
+  background: #9fcaff;
+  border-radius: 50%;
+  flex: 0 0 5px;
+  height: 5px;
+}
+.admin-dashboard .admin-poster-preview-copy h3 {
+  color: #f5f7fa;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(30px, 3.1vw, 46px);
+  font-weight: 600;
+  letter-spacing: -.075em;
+  line-height: .9;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.admin-dashboard .admin-poster-preview-copy h3 em {
+  color: #9fcaff;
+  font-style: normal;
+}
+.admin-dashboard .admin-poster-preview-description {
+  color: #d3dae4;
+  font-size: 9px;
+  line-height: 1.55;
+  margin: 0 0 12px;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+}
+.admin-dashboard .admin-poster-preview-button {
+  align-items: center;
+  background: #f5f7fa;
+  color: #090b0f;
+  display: inline-flex;
+  font-size: 8px;
+  font-weight: 700;
+  gap: 12px;
+  letter-spacing: .1em;
+  max-width: 100%;
+  min-height: 32px;
+  overflow-wrap: anywhere;
+  padding: 0 10px;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-image {
+  object-fit: contain;
+  object-position: center;
+  width: 100%;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-shade {
+  background: linear-gradient(0deg, rgba(2, 8, 23, .48), transparent 70%);
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-copy {
+  background: rgba(2, 8, 23, .88);
+  border: 1px solid rgba(159, 197, 237, .2);
+  bottom: 8%;
+  left: 6%;
+  max-width: 62%;
+  padding: 14px;
+  top: auto;
+  transform: none;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-copy h3 {
+  font-size: clamp(24px, 2.2vw, 34px);
+  line-height: .92;
+  margin-bottom: 8px;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-eyebrow {
+  font-size: 6px;
+  margin-bottom: 7px;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-description {
+  font-size: 8px;
+  margin-bottom: 8px;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-image {
+  height: 92%;
+  max-width: 46%;
+  object-fit: contain;
+  right: 5%;
+  top: 4%;
+  width: auto;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-shade {
+  background: linear-gradient(0deg, rgba(2, 8, 23, .48), transparent 70%);
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-copy {
+  background: rgba(2, 8, 23, .88);
+  border: 1px solid rgba(159, 197, 237, .2);
+  left: 5%;
+  max-width: 55%;
+  padding: 14px;
+}
+.admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-copy h3 {
+  font-size: clamp(26px, 3.1vw, 40px);
+}
+@media (max-width: 760px) {
+  .admin-dashboard .admin-poster-preview {
+    aspect-ratio: 4 / 5;
+    max-height: 520px;
+    min-height: 350px;
+  }
+  .admin-dashboard .admin-poster-preview-image {
+    height: 100%;
+    object-position: 63% center;
+    width: 100%;
+  }
+  .admin-dashboard .admin-poster-preview-shade {
+    background: linear-gradient(90deg, rgba(7, 11, 17, .92), rgba(7, 11, 17, .64) 58%, rgba(7, 11, 17, .12)), linear-gradient(0deg, rgba(4, 8, 13, .5), transparent 60%);
+  }
+  .admin-dashboard .admin-poster-preview-copy {
+    left: 7%;
+    max-width: 86%;
+  }
+  .admin-dashboard .admin-poster-preview-copy h3 {
+    font-size: clamp(34px, 9vw, 54px);
+  }
+  .admin-dashboard .admin-poster-preview-description {
+    font-size: 10px;
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-image {
+    height: 43%;
+    object-position: center top;
+    top: 0;
+    width: 100%;
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-shade {
+    background: linear-gradient(0deg, rgba(2, 8, 23, .48), transparent 58%);
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-copy {
+    bottom: 8%;
+    left: 7%;
+    max-width: 86%;
+    padding: 12px;
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-wide"] .admin-poster-preview-copy h3 {
+    font-size: clamp(30px, 8vw, 44px);
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-image {
+    height: auto;
+    max-height: 82%;
+    max-width: 54%;
+    right: 2%;
+    top: 9%;
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-copy {
+    left: 6%;
+    max-width: 47%;
+    padding: 10px;
+    top: 48%;
+    transform: translateY(-45%);
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-copy h3 {
+    font-size: clamp(30px, 8vw, 42px);
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-eyebrow {
+    font-size: 6px;
+    gap: 4px;
+    letter-spacing: .1em;
+  }
+  .admin-dashboard .admin-poster-preview[data-layout="poster-portrait"] .admin-poster-preview-description {
+    font-size: 8px;
+  }
+}

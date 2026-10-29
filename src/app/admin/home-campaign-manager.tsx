@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { ImagePlus, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ArrowRight, ImagePlus, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import type { User } from "firebase/auth";
 import { homeCampaignLayouts, type HomeCampaign, type HomeCampaignFields, type HomeCampaignLayout } from "@/lib/home-campaigns";
 
@@ -30,6 +30,29 @@ const layoutLabels: Record<HomeCampaignLayout, string> = {
   "poster-wide": "Wide poster",
   "poster-portrait": "Portrait poster",
 };
+
+function PosterPreview({ form }: { form: CampaignForm }) {
+  return (
+    <section aria-labelledby="poster-live-preview-heading" className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h4 id="poster-live-preview-heading" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300">Live preview</h4>
+        <span className="text-[10px] font-semibold text-slate-500">Not published until you save</span>
+      </div>
+      <div className="admin-poster-preview" data-layout={form.layout}>
+        {form.image_url
+          ? <img src={form.image_url} alt="" className="admin-poster-preview-image" />
+          : <div className="admin-poster-preview-empty"><ImagePlus size={24} /><span>Upload an image to preview your poster</span></div>}
+        <div className="admin-poster-preview-shade" />
+        <div className="admin-poster-preview-copy">
+          <p className="admin-poster-preview-eyebrow"><span />{form.eyebrow || "YOUR EYEBROW"}</p>
+          <h3>{form.title || "Your title"}<br /><em>{form.title_emphasis || "Your highlighted title"}</em></h3>
+          <p className="admin-poster-preview-description">{form.description || "Your description will appear here."}</p>
+          <span className="admin-poster-preview-button">{form.cta_label || "BUTTON LABEL"}<ArrowRight size={14} /></span>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function HomeCampaignManager({ user }: Props) {
   const [campaigns, setCampaigns] = useState<HomeCampaign[]>([]);
@@ -205,7 +228,7 @@ export default function HomeCampaignManager({ user }: Props) {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-sky-300">Homepage content</p>
           <h2 className="mt-1 text-xl font-bold">Featured posters</h2>
-          <p className="mt-1 max-w-2xl text-xs text-slate-400">Upload artwork, write the copy, choose a layout, and publish or hide each homepage slide. Use display order to arrange the carousel.</p>
+          <p className="mt-1 max-w-2xl text-xs text-slate-400">Edit each field and review the live poster preview before you publish. Use display order to arrange the carousel.</p>
         </div>
         <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">{campaigns.filter((campaign) => campaign.is_active).length} published · {campaigns.length} total</span>
       </div>
@@ -237,11 +260,20 @@ export default function HomeCampaignManager({ user }: Props) {
               ))}
         </div>
 
-        <form id="home-campaign-editor" onSubmit={(event) => void saveCampaign(event)} className="scroll-mt-5 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+        <form
+          id="home-campaign-editor"
+          onSubmit={(event) => void saveCampaign(event)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && event.target instanceof HTMLInputElement && !["checkbox", "file"].includes(event.target.type)) {
+              event.preventDefault();
+            }
+          }}
+          className="scroll-mt-5 rounded-2xl border border-slate-800 bg-slate-950 p-4"
+        >
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-white">{editingId ? "Edit poster" : "Create a poster"}</h3>
-              <p className="mt-1 text-xs text-slate-400">Text is displayed as plain copy; no code or HTML needed.</p>
+              <p className="mt-1 text-xs text-slate-400">Your preview updates as you edit. Review it before publishing.</p>
             </div>
             {editingId && <button type="button" onClick={() => resetForm()} aria-label="Cancel editing" className="rounded-lg border border-slate-700 p-2 text-slate-300"><X size={15} /></button>}
           </div>
@@ -255,7 +287,6 @@ export default function HomeCampaignManager({ user }: Props) {
                 </label>
                 <span className="text-xs font-normal text-slate-500">JPG, PNG, or WebP · up to 5 MB</span>
               </span>
-              {form.image_url && <img src={form.image_url} alt="Poster preview" className="max-h-44 w-full rounded-xl bg-slate-900 object-contain" />}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -266,6 +297,7 @@ export default function HomeCampaignManager({ user }: Props) {
             </div>
 
             <label className={labelClass}>Description<textarea required maxLength={300} rows={3} value={form.description} onChange={(event) => updateField("description", event.target.value)} className={inputClass} placeholder="Tell shoppers what is new." /></label>
+            <PosterPreview form={form} />
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={labelClass}>Button destination<input required maxLength={512} value={form.href} onChange={(event) => updateField("href", event.target.value)} className={inputClass} placeholder="/shop?category=Tennis" /></label>
               <label className={labelClass}>Design
@@ -279,7 +311,7 @@ export default function HomeCampaignManager({ user }: Props) {
 
             <div className="flex flex-wrap gap-2 pt-1">
               <button type="submit" disabled={saving || uploading || loading} className="inline-flex items-center gap-2 rounded-xl bg-sky-400 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-50">
-                {editingId ? <Save size={15} /> : <Plus size={15} />}{saving ? "Saving..." : editingId ? "Save poster" : "Create poster"}
+                {editingId ? <Save size={15} /> : <Plus size={15} />}{saving ? "Saving..." : form.is_active ? editingId ? "Save & publish changes" : "Publish poster" : editingId ? "Save hidden poster" : "Create hidden poster"}
               </button>
               {editingId && <button type="button" onClick={() => resetForm()} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300">Cancel</button>}
             </div>
