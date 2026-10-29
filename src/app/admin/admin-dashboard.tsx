@@ -206,7 +206,6 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     category: "Badminton",
     sku: "",
     zoho_product_id: "",
-    colors: "",
     size_stock: {} as Record<string, number>,
     price: "",
     stock: "10",
@@ -389,7 +388,6 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         zoho_product_id: productForm.zoho_product_id.trim(),
         price: Number(productForm.price),
         ...(productForm.product_type !== "shoe" ? { stock: Number(productForm.stock) } : {}),
-        colors: productForm.product_type === "racquet" ? parseOptionList(productForm.colors) : [],
         size_stock: productForm.product_type === "shoe" ? getSizeStockForCategory(productForm.size_stock, productForm.size_category) : {},
       };
 
@@ -410,7 +408,6 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         category: "Badminton",
         sku: "",
         zoho_product_id: "",
-        colors: "",
         size_stock: {},
         price: "",
         stock: "10",
@@ -737,11 +734,6 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       <input value={productForm.brand} onChange={(event) => setProductForm((current) => ({ ...current, brand: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" placeholder="e.g. Yonex" />
                     </label>
                   </section>
-                  {productForm.product_type === "racquet" && (
-                    <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Colors
-                      <input value={productForm.colors} onChange={(event) => setProductForm((current) => ({ ...current, colors: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" placeholder="Separate racquet colors with commas: Black, White, Navy" />
-                    </label>
-                  )}
                   {productForm.product_type === "shoe" && (
                     <ShoeSizeSelector
                       category={productForm.size_category}

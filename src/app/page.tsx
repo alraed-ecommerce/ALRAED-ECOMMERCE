@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import AthleteShowcase from "./AthleteShowcase";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
@@ -19,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Heart,
+  MessageCircle,
   MapPin,
   Menu,
   Minus,
@@ -180,6 +182,17 @@ const configuredWhatsAppNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER?.replac
 const footerWhatsAppUrl = configuredWhatsAppNumber
   ? `https://wa.me/${configuredWhatsAppNumber.startsWith("00") ? configuredWhatsAppNumber.slice(2) : configuredWhatsAppNumber.startsWith("0") ? `971${configuredWhatsAppNumber.slice(1)}` : configuredWhatsAppNumber}`
   : "https://wa.me/?text=Hello%20Al%20Raed%20Sports";
+const stringingWhatsAppUrl = (() => {
+  const url = new URL(footerWhatsAppUrl);
+  url.searchParams.set("text", "Hello Al Raed Sports, I would like to get my badminton or tennis racket stringed.");
+  return url.toString();
+})();
+
+const stringingVideos: Array<{ sport: string; title: string; image: string; video?: string }> = [
+  { sport: "STRINGING WITH JABIR", title: "A closer look at the process", image: "/playerimage.jpg", video: "/jabir-stringing.mp4" },
+  { sport: "STRINGING WITH MEHDIN", title: "Precision, frame by frame", image: "/tennisaccessories.jpg", video: "/mehdin-stringing.mp4" },
+  { sport: "BEHIND THE SCENES", title: "The stringing process", image: "/badminton-campaign.jpg", video: "/jabir2-stringing.mp4" },
+];
 
 function ProductTile({
   product,
@@ -789,6 +802,60 @@ export default function Home() {
       <section className="ar-bestsellers ar-section" id="player-favourites">
         <div className="ar-section-heading"><div><p className="ar-eyebrow">THE COURT&apos;S FAVOURITES</p><h2>Player <em>approved.</em></h2></div><Link className="ar-text-link" href="/shop">SHOP ALL GEAR <ArrowRight size={16} /></Link></div>
         <div className="ar-best-grid">{bestSellers.slice(0, 4).map((product) => <ProductTile key={product.id} product={product} liked={wishlist.includes(product.id)} onLike={toggleWishlist} onAdd={addToCart} onView={viewProduct} added={justAdded.includes(product.id)} />)}</div>
+      </section>
+
+      <section className="ar-stringing ar-section" aria-labelledby="ar-stringing-title">
+        <div className="ar-stringing-heading">
+          <div className="ar-stringing-intro">
+            <p className="ar-eyebrow">BADMINTON &amp; TENNIS · RACQUET STRINGING</p>
+            <h2 id="ar-stringing-title">Fresh strings.<br /><em>Better feel.</em></h2>
+            <p>Get your racket ready for the next rally. Reach out to our team on WhatsApp to ask about stringing for your game.</p>
+          </div>
+          <a className="ar-stringing-whatsapp" href={stringingWhatsAppUrl} target="_blank" rel="noreferrer">
+            <MessageCircle size={17} aria-hidden="true" />
+            <span>REACH OUT ON WHATSAPP</span>
+            <ArrowRight size={16} aria-hidden="true" />
+          </a>
+        </div>
+
+        <div className="ar-stringing-sports" aria-label="Racquet stringing sports">
+          <article className="ar-stringing-sport">
+            <span className="ar-stringing-sport-number">01</span>
+            <div><p>FOR THE COURT</p><h3>Badminton</h3><span>Ask us about badminton racket stringing for your next session.</span></div>
+            <span className="ar-stringing-sport-mark" aria-hidden="true">B</span>
+          </article>
+          <article className="ar-stringing-sport">
+            <span className="ar-stringing-sport-number">02</span>
+            <div><p>FOR THE BASELINE</p><h3>Tennis</h3><span>Get in touch with your tennis racket details and our team will help.</span></div>
+            <span className="ar-stringing-sport-mark" aria-hidden="true">T</span>
+          </article>
+        </div>
+
+        <div className="ar-stringing-videos-heading">
+          <div><p className="ar-eyebrow">FROM OUR STRINGERS</p><h3>Made with care.<br /><em>Made for your game.</em></h3></div>
+          <p>Take a look behind the scenes with our stringers. More videos are on the way.</p>
+        </div>
+        <div className="ar-stringing-video-grid">
+          {stringingVideos.map((item, index) => (
+            <article className="ar-stringing-video-card" key={item.title}>
+              <div className="ar-stringing-video-frame">
+                {item.video ? (
+                  <video autoPlay muted playsInline loop preload="metadata" poster={item.image} aria-label={`${item.title} video`}>
+                    <source src={item.video} type="video/mp4" />
+                    Your browser does not support video playback.
+                  </video>
+                ) : (
+                  <div className="ar-stringing-video-placeholder">
+                    <Image src={item.image} alt="" width={900} height={580} loading="lazy" />
+                    <span className="ar-stringing-video-coming"><span aria-hidden="true">↗</span> VIDEO COMING SOON</span>
+                  </div>
+                )}
+                <span className="ar-stringing-video-index">0{index + 1}</span>
+              </div>
+              <div className="ar-stringing-video-copy"><span>{item.sport}</span><h4>{item.title}</h4></div>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="ar-store-visit" aria-labelledby="ar-store-visit-title">

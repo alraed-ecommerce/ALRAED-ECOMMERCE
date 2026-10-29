@@ -3095,3 +3095,197 @@ textarea { transition-duration: .2s; }
   .admin-dashboard .admin-logout { min-height: 32px; padding: 0 8px; }
   .admin-dashboard .admin-logout span { display: none; }
 }
+
+/* Racquet stringing service */
+.ar-stringing {
+  background: var(--paper);
+  color: var(--ink);
+  padding-bottom: clamp(68px, 8vw, 112px);
+  padding-top: clamp(68px, 8vw, 112px);
+}
+.ar-stringing-heading {
+  align-items: flex-end;
+  display: flex;
+  gap: 32px;
+  justify-content: space-between;
+  margin-bottom: 38px;
+}
+.ar-stringing-intro { max-width: 540px; }
+.ar-stringing .ar-stringing-intro .ar-eyebrow { color: var(--blue); margin-bottom: 18px; }
+.ar-stringing .ar-stringing-intro h2 {
+  color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(47px, 6vw, 78px);
+  font-weight: 500;
+  letter-spacing: -.08em;
+  line-height: .9;
+  margin: 0 0 18px;
+}
+.ar-stringing .ar-stringing-intro h2 em,
+.ar-stringing-videos-heading h3 em { color: var(--blue); font-style: normal; }
+.ar-stringing-intro > p:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 0;
+  max-width: 410px;
+}
+.ar-stringing-whatsapp {
+  align-items: center;
+  background: #1d9a64;
+  border: 1px solid #35b27c;
+  border-radius: 2px;
+  color: #fff !important;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  gap: 12px;
+  justify-content: center;
+  letter-spacing: .1em;
+  min-height: 50px;
+  padding: 0 17px;
+  transition: background .2s, transform .2s;
+}
+.ar-stringing-whatsapp:hover { background: #168354; transform: translateY(-2px); }
+.ar-stringing-whatsapp svg:last-child { margin-left: 3px; }
+.ar-stringing-sports { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ar-stringing-sport {
+  align-items: flex-start;
+  background: var(--theme-card);
+  border: 1px solid var(--theme-border);
+  display: grid;
+  gap: 15px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  min-height: 145px;
+  overflow: hidden;
+  padding: 23px 24px;
+  position: relative;
+}
+.ar-stringing-sport-number { color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: .1em; padding-top: 3px; }
+.ar-stringing-sport > div { position: relative; z-index: 1; }
+.ar-stringing-sport > div > p { color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .15em; margin: 0 0 8px; }
+.ar-stringing-sport h3 {
+  color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -.04em;
+  margin: 0 0 7px;
+}
+.ar-stringing-sport > div > span { color: var(--muted); display: block; font-size: 10px; line-height: 1.65; max-width: 360px; }
+.ar-stringing-sport-mark {
+  color: color-mix(in srgb, var(--blue) 8%, transparent);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 108px;
+  font-weight: 600;
+  letter-spacing: -.12em;
+  line-height: .9;
+  position: absolute;
+  right: 15px;
+  top: 17px;
+}
+.ar-stringing-videos-heading {
+  align-items: flex-end;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin: 61px 0 22px;
+}
+.ar-stringing-videos-heading .ar-eyebrow { color: var(--muted); font-size: 8px; margin: 0 0 10px; }
+.ar-stringing-videos-heading h3 {
+  color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -.055em;
+  line-height: 1;
+  margin: 0;
+}
+.ar-stringing-videos-heading > p { color: var(--muted); font-size: 10px; line-height: 1.6; margin: 0 0 2px; max-width: 245px; }
+.ar-stringing-video-grid { display: grid; gap: 13px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ar-stringing-video-card { min-width: 0; }
+.ar-stringing-video-frame {
+  background: #10151c;
+  border: 1px solid var(--theme-border);
+  height: clamp(460px, 45vw, 620px);
+  overflow: hidden;
+  position: relative;
+}
+.ar-stringing-video-frame > video {
+  background: #070b11;
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+.ar-stringing-video-placeholder { display: block; height: 100%; width: 100%; }
+.ar-stringing-video-placeholder { overflow: hidden; position: relative; }
+.ar-stringing-video-placeholder::after { background: linear-gradient(0deg, rgba(5, 10, 17, .78), transparent 65%); content: ""; inset: 0; pointer-events: none; position: absolute; }
+.ar-stringing-video-placeholder img {
+  filter: saturate(.72);
+  height: 100%;
+  object-fit: cover;
+  transition: transform .6s cubic-bezier(.2,.8,.2,1);
+  width: 100%;
+}
+.ar-stringing-video-card:hover .ar-stringing-video-placeholder img { transform: scale(1.04); }
+.ar-stringing-video-coming {
+  align-items: center;
+  bottom: 13px;
+  color: #e5edf6;
+  display: flex;
+  font-size: 7px;
+  font-weight: 700;
+  gap: 7px;
+  left: 13px;
+  letter-spacing: .12em;
+  position: absolute;
+  z-index: 1;
+}
+.ar-stringing-video-coming > span {
+  align-items: center;
+  border: 1px solid rgba(229, 237, 246, .65);
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 10px;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+.ar-stringing-video-index {
+  background: rgba(8, 13, 20, .68);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  padding: 5px 7px;
+  position: absolute;
+  right: 12px;
+  top: 11px;
+  z-index: 1;
+}
+.ar-stringing-video-copy { padding: 11px 1px 0; }
+.ar-stringing-video-copy > span { color: var(--muted); font-size: 7px; font-weight: 700; letter-spacing: .15em; }
+.ar-stringing-video-copy h4 { color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 500; margin: 4px 0 0; }
+.ar-stringing a:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+@media (max-width: 760px) {
+  .ar-stringing-heading { align-items: flex-start; flex-direction: column; gap: 22px; }
+  .ar-stringing-sport { min-height: 138px; padding: 19px 17px; }
+  .ar-stringing-videos-heading { align-items: flex-start; flex-direction: column; gap: 10px; margin-top: 46px; }
+  .ar-stringing-video-grid { gap: 16px 11px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ar-stringing-video-frame { height: clamp(420px, 65vw, 540px); }
+  .ar-stringing-video-card:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  .ar-stringing { padding-bottom: 64px; padding-top: 64px; }
+  .ar-stringing-heading { margin-bottom: 28px; }
+  .ar-stringing .ar-stringing-intro h2 { font-size: clamp(44px, 12vw, 60px); }
+  .ar-stringing-whatsapp { min-height: 47px; width: 100%; }
+  .ar-stringing-sports { grid-template-columns: 1fr; }
+  .ar-stringing-sport { min-height: 120px; }
+  .ar-stringing-videos-heading { margin-top: 40px; }
+  .ar-stringing-video-grid { grid-template-columns: 1fr; }
+  .ar-stringing-video-card:last-child { grid-column: auto; }
+  .ar-stringing-video-frame { height: clamp(440px, 130vw, 600px); }
+}
