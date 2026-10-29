@@ -249,6 +249,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         product.brand,
         product.category,
         String(product.id),
+        product.sku ?? "",
         product.zoho_product_id ?? "",
       ].some((value) => value.toLocaleLowerCase().includes(query));
     });
@@ -783,7 +784,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
                 <Search size={16} />
-                <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} className="w-full bg-transparent py-2.5 text-sm text-white outline-none" placeholder="Search name, brand, category, ID or Zoho ID" aria-label="Search products by name, brand, category, product ID, or Zoho product ID" />
+                <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} className="w-full bg-transparent py-2.5 text-sm text-white outline-none" placeholder="Search name, brand, category, product ID, Zoho SKU or Zoho product ID" aria-label="Search products by name, brand, category, product ID, Zoho SKU, or Zoho product ID" />
               </label>
               <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
                 <Filter size={16} />
