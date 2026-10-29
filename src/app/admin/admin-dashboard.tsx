@@ -177,6 +177,9 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [downloadingOrdersReport, setDownloadingOrdersReport] = useState(false);
+  const [ordersReportError, setOrdersReportError] = useState<string | null>(null);
+  const [ordersReportNotice, setOrdersReportNotice] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
@@ -379,6 +382,21 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       setAuthError(error instanceof Error ? error.message : "Unable to update order.");
     } finally {
       setBusyOrderId(null);
+    }
+  };
+
+  const exportOrdersReport = async () => {
+    setDownloadingOrdersReport(true);
+    setOrdersReportError(null);
+    setOrdersReportNotice(null);
+    try {
+      const { downloadOrderReport } = await import("./order-report");
+      const { orderCount } = await downloadOrderReport(orders);
+      setOrdersReportNotice(`Order report downloaded with ${orderCount} order${orderCount === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setOrdersReportError(error instanceof Error ? error.message : "The order report could not be generated. Please try again.");
+    } finally {
+      setDownloadingOrdersReport(false);
     }
   };
 
@@ -647,13 +665,22 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         {section === "coupons" && user && <CouponManager user={user} />}
 
         {section === "orders" && <section id="customer-orders" className="mb-8 scroll-mt-6 rounded-3xl border border-sky-400/20 bg-slate-900 p-5">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-sky-300">Order management</p>
               <h2 className="mt-1 text-xl font-bold">Customer orders</h2>
             </div>
-            <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">{visibleOrders.length} of {orders.length}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">{visibleOrders.length} of {orders.length}</span>
+              <button type="button" onClick={() => void exportOrdersReport()} disabled={downloadingOrdersReport || orders.length === 0} className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Export all orders as an Excel workbook">
+                <FileSpreadsheet size={15} aria-hidden="true" />
+                {downloadingOrdersReport ? "Preparing export..." : "Export all orders"}
+              </button>
+            </div>
           </div>
+
+          {ordersReportNotice && <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200" role="status">{ordersReportNotice}</div>}
+          {ordersReportError && <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="alert">{ordersReportError}</div>}
 
           <div className="mb-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(170px,220px)_minmax(170px,220px)]">
             <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
