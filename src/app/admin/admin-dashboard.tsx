@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, Filter, Footprints, ImagePlus, LogOut, Minus, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
+import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, Minus, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import HomeCampaignManager from "./home-campaign-manager";
@@ -72,7 +72,6 @@ const shoeSizes: Record<SizeCategory, string[]> = {
   womens: Array.from({ length: 10 }, (_, index) => `UK ${index + 2}`),
   kids: Array.from({ length: 10 }, (_, index) => `UK ${index + 2}`),
 };
-
 function getProductType(product: Pick<Product, "product_type" | "name">): ProductType {
   if (product.product_type) return product.product_type;
   return /shoe|sneaker/i.test(product.name) ? "shoe" : "other";
@@ -191,6 +190,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [editingProductStock, setEditingProductStock] = useState("0");
   const [savingEditedProductId, setSavingEditedProductId] = useState<number | null>(null);
   const [productNotice, setProductNotice] = useState<string | null>(null);
+  const [stockReportError, setStockReportError] = useState<string | null>(null);
+  const [downloadingStockReport, setDownloadingStockReport] = useState(false);
   const [syncingInventory, setSyncingInventory] = useState(false);
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState("");
@@ -273,6 +274,21 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const changeEditingSizeCategory = (sizeCategory: SizeCategory) => {
     setEditingSizeCategory(sizeCategory);
     setEditingSizeStock((current) => getSizeStockForCategory(current, sizeCategory));
+  };
+
+  const exportStockReport = async () => {
+    setDownloadingStockReport(true);
+    setProductNotice(null);
+    setStockReportError(null);
+    try {
+      const { downloadStockReport } = await import("./stock-report");
+      const { shoeCount, racketCount } = await downloadStockReport(products);
+      setProductNotice(`Stock report downloaded: ${shoeCount} shoe${shoeCount === 1 ? "" : "s"} and ${racketCount} racket${racketCount === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setStockReportError(error instanceof Error ? error.message : "The stock report could not be generated. Please try again.");
+    } finally {
+      setDownloadingStockReport(false);
+    }
   };
 
   const loadOrders = async (token: string) => {
@@ -784,8 +800,12 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-bold">Current products</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">{visibleProducts.length} shown · {products.length} total</span>
+                <button type="button" onClick={() => void exportStockReport()} disabled={downloadingStockReport || products.length === 0} className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Download stock report as an Excel workbook">
+                  <FileSpreadsheet size={15} aria-hidden="true" />
+                  {downloadingStockReport ? "Preparing report..." : "Download stock report"}
+                </button>
                 <button hidden type="button" onClick={() => void syncZohoInventory()} disabled={syncingInventory} className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-400/10 disabled:opacity-50">
                   <RefreshCw size={14} className={syncingInventory ? "animate-spin" : ""} />
                   {syncingInventory ? "Syncing Zoho..." : "Sync Zoho stock"}
@@ -793,6 +813,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
               </div>
             </div>
             {productNotice && <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200" role="status">{productNotice}</div>}
+            {stockReportError && <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="alert">{stockReportError}</div>}
             <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
                 <Search size={16} />
