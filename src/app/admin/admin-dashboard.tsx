@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, Filter, Footprints, ImagePlus, LogOut, Minus, Package, Plus, RefreshCw, Save, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, Filter, Footprints, ImagePlus, LogOut, Minus, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import HomeCampaignManager from "./home-campaign-manager";
@@ -11,12 +11,18 @@ import CouponManager from "./coupon-manager";
 
 type AdminSection = "products" | "orders" | "posters" | "coupons";
 
-const adminSections: Array<{ id: AdminSection; href: string; label: string }> = [
-  { id: "products", href: "/admin/products", label: "Add new products" },
-  { id: "orders", href: "/admin/orders", label: "View orders" },
-  { id: "posters", href: "/admin/posters", label: "Manage posters" },
-  { id: "coupons", href: "/admin/coupons", label: "Manage coupons" },
+const adminSections: Array<{ id: AdminSection; href: string; label: string; description: string; Icon: typeof Package }> = [
+  { id: "products", href: "/admin/products", label: "Products", description: "Catalog and inventory", Icon: Package },
+  { id: "orders", href: "/admin/orders", label: "Orders", description: "Customer purchases", Icon: ClipboardList },
+  { id: "posters", href: "/admin/posters", label: "Campaigns", description: "Homepage content", Icon: PanelsTopLeft },
+  { id: "coupons", href: "/admin/coupons", label: "Coupons", description: "Discount codes", Icon: Tag },
 ];
+const sectionIntros: Record<AdminSection, string> = {
+  products: "Manage product listings, pricing, and stock in one place.",
+  orders: "Review customer purchases and keep fulfillment moving.",
+  posters: "Create and organize the campaigns featured on your homepage.",
+  coupons: "Create discount codes and track their use.",
+};
 
 type Product = {
   id: number;
@@ -527,14 +533,16 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     }
   };
 
+  const activeSection = adminSections.find((item) => item.id === section) ?? adminSections[0];
+
   if (!user && !loading) {
     return (
-      <main className="admin-dashboard min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
-        <div className="max-w-lg w-full rounded-3xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
+      <main className="admin-dashboard admin-gate min-h-screen flex items-center justify-center px-6">
+        <div className="admin-gate-card max-w-lg w-full rounded-3xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-sky-300">Admin access required</p>
           <h1 className="text-4xl font-black tracking-tight mb-4">Al Raed Sports Commerce</h1>
           <p className="mb-6 text-sm text-slate-300">Only the approved admin account can access this dashboard.</p>
-          {authError && <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{authError}</div>}
+          {authError && <div role="alert" className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{authError}</div>}
           <button
             type="button"
             onClick={() => void handleGoogleAdminLogin()}
@@ -551,16 +559,16 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
 
   if (loading) {
     return (
-      <main className="admin-dashboard min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <div className="text-sky-200">Checking admin access...</div>
+      <main className="admin-dashboard admin-gate min-h-screen flex items-center justify-center">
+        <div className="admin-loading"><span aria-hidden="true" />Checking admin access...</div>
       </main>
     );
   }
 
   if (!isAdmin) {
     return (
-      <main className="admin-dashboard min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
-        <div className="max-w-lg w-full rounded-3xl border border-rose-500/30 bg-slate-900 p-8">
+      <main className="admin-dashboard admin-gate min-h-screen flex items-center justify-center px-6">
+        <div className="admin-gate-card admin-gate-denied max-w-lg w-full rounded-3xl border border-rose-500/30 bg-slate-900 p-8">
           <ShieldCheck className="mb-4 text-rose-400" />
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-rose-300">Access denied</p>
           <h1 className="text-3xl font-black mb-4">This account is not authorized.</h1>
@@ -575,40 +583,52 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   }
 
   return (
-    <main className="admin-dashboard min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-sky-300">Admin dashboard</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight">Al Raed Sports Commerce</h1>
+    <main className="admin-dashboard min-h-screen">
+      <div className="admin-layout">
+        <aside className="admin-sidebar">
+          <Link href="/" className="admin-brand" aria-label="Al Raed Sports home">
+            <span className="admin-brand-mark">AR</span>
+            <span className="admin-brand-name"><strong>AL RAED</strong><small>SPORTS COMMERCE</small></span>
+          </Link>
+          <p className="admin-sidebar-label">WORKSPACE</p>
+          <nav aria-label="Admin pages" className="admin-nav">
+            {adminSections.map(({ id, href, label, description, Icon }) => (
+              <Link key={id} href={href} aria-current={section === id ? "page" : undefined} className={`admin-nav-link${section === id ? " is-active" : ""}`}>
+                <span className="admin-nav-icon"><Icon size={18} aria-hidden="true" /></span>
+                <span className="admin-nav-copy"><strong>{label}</strong><small>{description}</small></span>
+                {section === id && <span className="admin-nav-indicator" aria-hidden="true" />}
+              </Link>
+            ))}
+          </nav>
+          <div className="admin-sidebar-footer">
+            <span className="admin-status-dot" aria-hidden="true" />
+            <span><strong>Admin access</strong><small>Secure workspace</small></span>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/" className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200">Storefront <ArrowRight size={14} /></Link>
-            <button type="button" onClick={() => void handleLogout()} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-950">
-              <LogOut size={14} /> Sign out
-            </button>
-          </div>
-        </header>
+        </aside>
 
-        <nav aria-label="Admin pages" className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {adminSections.map((item, index) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              aria-current={section === item.id ? "page" : undefined}
-              className={`rounded-2xl border px-4 py-3 transition ${
-                section === item.id
-                  ? "border-sky-400 bg-sky-400 text-slate-950"
-                  : "border-slate-800 bg-slate-900 text-slate-200 hover:border-sky-400/60"
-              }`}
-            >
-              <span className="block text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">Page {index + 1}</span>
-              <span className="mt-1 block text-sm font-bold">{item.label}</span>
-            </Link>
-          ))}
-        </nav>
+        <div className="admin-main">
+          <header className="admin-topbar">
+            <div className="admin-breadcrumb"><span>Workspace</span><ArrowRight size={13} aria-hidden="true" /><strong>{activeSection.label}</strong></div>
+            <div className="admin-topbar-actions">
+              <Link href="/" className="admin-store-link">View storefront <ArrowRight size={14} aria-hidden="true" /></Link>
+              <span className="admin-user">
+                <span className="admin-user-avatar">{(user?.displayName || user?.email || "A").slice(0, 1).toUpperCase()}</span>
+                <span className="admin-user-copy"><strong>{user?.displayName || "Administrator"}</strong><small>{user?.email}</small></span>
+              </span>
+              <button type="button" onClick={() => void handleLogout()} className="admin-logout"><LogOut size={15} aria-hidden="true" /><span>Sign out</span></button>
+            </div>
+          </header>
 
-        {authError && <div className="mb-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{authError}</div>}
+          <div className="admin-content">
+            <div className="admin-page-heading">
+              <div>
+                <p className="admin-page-eyebrow">AL RAED <span>/</span> ADMINISTRATION</p>
+                <h1>{activeSection.label}</h1>
+                <p>{sectionIntros[section]}</p>
+              </div>
+            </div>
+
+        {authError && <div role="alert" className="mb-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{authError}</div>}
 
         {section === "posters" && user && <HomeCampaignManager user={user} />}
         {section === "coupons" && user && <CouponManager user={user} />}
@@ -877,6 +897,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           </section>
         </div>}
 
+          </div>
+        </div>
       </div>
       <button className="ar-floating-button ar-floating-top admin-back-to-top" type="button" aria-label="Scroll to top" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
         <ArrowUp size={15} />
