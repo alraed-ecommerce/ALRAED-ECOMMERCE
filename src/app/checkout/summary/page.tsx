@@ -330,8 +330,8 @@ export default function OrderSummaryPage() {
 
               <div className="checkout-price-rows">
                 <div><span>Product subtotal</span><strong>{quote ? money(quote.subtotal) : "—"}</strong></div>
-                <div><span>Delivery fee</span><strong>{quote ? money(quote.deliveryFee) : "—"}</strong></div>
-                <div><span>Handling fee</span><strong>{quote ? money(quote.handlingFee) : "—"}</strong></div>
+                <div><span>Delivery fee</span><strong>{quote ? quote.deliveryFee > 0 ? money(quote.deliveryFee) : "FREE" : "—"}</strong></div>
+                <div><span>Handling fee</span><strong>{quote ? quote.handlingFee > 0 ? money(quote.handlingFee) : "FREE" : "—"}</strong></div>
                 {quote?.coupon && <div className="checkout-discount-row"><span>Coupon discount</span><strong>− {money(quote.discount)}</strong></div>}
                 <div className="checkout-final-total"><span>Total payable</span><strong>{quote ? money(quote.total) : "—"}</strong></div>
               </div>

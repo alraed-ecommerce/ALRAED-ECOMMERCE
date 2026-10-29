@@ -1,5 +1,6 @@
 export const DELIVERY_FEE_FILS = 1000;
 export const HANDLING_FEE_FILS = 200;
+export const FREE_DELIVERY_THRESHOLD_FILS = 20000;
 
 export type CouponForValidation = {
   code: string;
@@ -61,12 +62,15 @@ export function validateCouponEligibility(
 export function calculateCheckoutTotals(subtotalFils: number, discountFils = 0) {
   const safeSubtotalFils = Math.max(0, Math.round(subtotalFils));
   const safeDiscountFils = Math.min(safeSubtotalFils, Math.max(0, Math.round(discountFils)));
-  const beforeDiscountFils = safeSubtotalFils + DELIVERY_FEE_FILS + HANDLING_FEE_FILS;
+  const feesApply = safeSubtotalFils < FREE_DELIVERY_THRESHOLD_FILS;
+  const deliveryFeeFils = feesApply ? DELIVERY_FEE_FILS : 0;
+  const handlingFeeFils = feesApply ? HANDLING_FEE_FILS : 0;
+  const beforeDiscountFils = safeSubtotalFils + deliveryFeeFils + handlingFeeFils;
 
   return {
     subtotalFils: safeSubtotalFils,
-    deliveryFeeFils: DELIVERY_FEE_FILS,
-    handlingFeeFils: HANDLING_FEE_FILS,
+    deliveryFeeFils,
+    handlingFeeFils,
     discountFils: safeDiscountFils,
     totalFils: Math.max(0, beforeDiscountFils - safeDiscountFils),
   };

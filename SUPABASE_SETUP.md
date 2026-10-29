@@ -148,7 +148,7 @@ The sixth migration adds atomic per-channel order-confirmation delivery state an
 
 The seventh migration creates the homepage poster table and seeds it with the current homepage campaigns. Apply it to enable poster creation, editing, ordering, publishing, and hiding in the admin dashboard. Poster images upload to the existing public `product-images` storage bucket.
 
-The eighth migration creates the private coupon table and adds order-summary fees, discounts, coupon redemption reservations, and checkout-attempt idempotency. Apply it after the Stripe checkout and product-variant migrations. Customers then review a server-priced order summary before Stripe payment; coupons are managed in the authorized admin dashboard. Delivery and handling fees are AED 10 and AED 2 respectively.
+The eighth migration creates the private coupon table and adds order-summary fees, discounts, coupon redemption reservations, and checkout-attempt idempotency. Apply it after the Stripe checkout and product-variant migrations. Customers then review a server-priced order summary before Stripe payment; coupons are managed in the authorized admin dashboard. Orders with a product subtotal below AED 200 include AED 10 delivery and AED 2 handling fees. Both fees are waived when the product subtotal is AED 200 or more.
 
 Do not use a client-provided price to create orders. The existing `/api/orders` route sends only product IDs and quantities to the database function. The service role key must remain server-only.
 

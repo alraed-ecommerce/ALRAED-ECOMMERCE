@@ -22,11 +22,29 @@ test("uses integer fils for item and order totals", () => {
   assert.equal(toFils("12.34"), 1234);
   assert.deepEqual(calculateCheckoutTotals(25000, 2000), {
     subtotalFils: 25000,
+    deliveryFeeFils: 0,
+    handlingFeeFils: 0,
+    discountFils: 2000,
+    totalFils: 23000,
+  });
+});
+
+test("applies both fees below AED 200 and waives both at AED 200 and above", () => {
+  assert.deepEqual(calculateCheckoutTotals(19999), {
+    subtotalFils: 19999,
     deliveryFeeFils: 1000,
     handlingFeeFils: 200,
-    discountFils: 2000,
-    totalFils: 24200,
+    discountFils: 0,
+    totalFils: 21199,
   });
+  assert.deepEqual(calculateCheckoutTotals(20000), {
+    subtotalFils: 20000,
+    deliveryFeeFils: 0,
+    handlingFeeFils: 0,
+    discountFils: 0,
+    totalFils: 20000,
+  });
+  assert.equal(calculateCheckoutTotals(20001).totalFils, 20001);
 });
 
 test("caps fixed coupon discount to the product subtotal", () => {

@@ -137,14 +137,20 @@ begin
 
   update public.orders
   set product_subtotal = v_subtotal,
-      delivery_fee = 10.00,
-      handling_fee = 2.00,
+      delivery_fee = case when v_subtotal >= 200.00 then 0.00 else 10.00 end,
+      handling_fee = case when v_subtotal >= 200.00 then 0.00 else 2.00 end,
       coupon_id = v_coupon_id,
       coupon_code = nullif(v_code, ''),
       coupon_discount = v_discount,
       coupon_redemption_reserved = v_coupon_id is not null,
       checkout_attempt_id = p_checkout_attempt_id,
-      total = greatest(0, v_subtotal + 10.00 + 2.00 - v_discount)
+      total = greatest(
+        0,
+        v_subtotal
+        + case when v_subtotal >= 200.00 then 0.00 else 10.00 end
+        + case when v_subtotal >= 200.00 then 0.00 else 2.00 end
+        - v_discount
+      )
   where id = p_order_id
   returning * into v_order;
 

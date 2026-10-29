@@ -7,6 +7,8 @@ import { toFils } from "@/lib/checkout-pricing";
 type CheckoutOrder = {
   order_id: string;
   total: number;
+  delivery_fee: number;
+  handling_fee: number;
   coupon_code: string | null;
   coupon_discount: number;
   checkout_session_id: string | null;
@@ -166,24 +168,26 @@ export async function POST(request: Request) {
           product_data: { name: item.product_name },
         },
       }));
-      lineItems.push(
-        {
+      if (order.delivery_fee > 0) {
+        lineItems.push({
           quantity: 1,
           price_data: {
             currency: "aed",
-            unit_amount: 1000,
+            unit_amount: toFils(order.delivery_fee),
             product_data: { name: "Delivery fee" },
           },
-        },
-        {
+        });
+      }
+      if (order.handling_fee > 0) {
+        lineItems.push({
           quantity: 1,
           price_data: {
             currency: "aed",
-            unit_amount: 200,
+            unit_amount: toFils(order.handling_fee),
             product_data: { name: "Handling fee" },
           },
-        },
-      );
+        });
+      }
       let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
       if (order.coupon_code && order.coupon_discount > 0) {
         const stripeCoupon = await stripe.coupons.create({
