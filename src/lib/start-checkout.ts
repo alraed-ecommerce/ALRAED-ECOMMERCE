@@ -2,6 +2,7 @@ import { auth } from "@/lib/firebase";
 import type { CartLine } from "@/lib/store-products";
 
 export async function startStripeCheckout(cart: CartLine[], navigate: (href: string) => void) {
+  if (!cart.length) throw new Error("Your shopping bag is empty.");
   if (auth) await auth.authStateReady();
   const user = auth?.currentUser;
   if (!user) {
@@ -29,24 +30,5 @@ export async function startStripeCheckout(cart: CartLine[], navigate: (href: str
     return;
   }
 
-  const response = await fetch("/api/checkout/session", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      products: cart.map(({ product, quantity, color, size }) => ({
-        product: { id: product.id },
-        quantity,
-        ...(color ? { color } : {}),
-        ...(size ? { size } : {}),
-      })),
-    }),
-  });
-  const result = await response.json() as { url?: string; error?: string };
-  if (!response.ok) throw new Error(result.error || "Unable to start secure checkout.");
-  if (!result.url) throw new Error("Secure checkout did not return a payment link.");
-
-  window.location.assign(result.url);
+  navigate("/checkout/summary");
 }

@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, Filter, Footprints, ImagePlus, LogOut, Minus, Package, PackageCheck, Plus, RefreshCw, Save, Search, ShieldCheck, ShoppingBag, UserRound } from "lucide-react";
+import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, Filter, Footprints, ImagePlus, LogOut, Minus, Package, PackageCheck, Plus, RefreshCw, Save, Search, ShieldCheck, ShoppingBag, Tag, UserRound } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
+import HomeCampaignManager from "./home-campaign-manager";
+import CouponManager from "./coupon-manager";
 
 type Product = {
   id: number;
@@ -570,6 +572,12 @@ export default function AdminPage() {
             <a href="#add-product" className="inline-flex items-center gap-2 rounded-full bg-sky-400 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-sky-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400">
               <Plus size={15} /> Add new product
             </a>
+            <a href="#home-posters" className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 px-4 py-2 text-sm font-bold text-sky-200">
+              <ImagePlus size={15} /> Manage posters
+            </a>
+            <a href="#coupons" className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 px-4 py-2 text-sm font-bold text-sky-200">
+              <Tag size={15} /> Manage coupons
+            </a>
             <Link href="/" className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200">Storefront <ArrowRight size={14} /></Link>
             <a href="#customer-orders" className="inline-flex items-center gap-2 rounded-full bg-sky-400 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-sky-300">
               <ShoppingBag size={14} /> View orders <span className="rounded-full bg-slate-950/15 px-2 py-0.5 text-xs">{orders.length}</span>
@@ -597,6 +605,9 @@ export default function AdminPage() {
             <div className="mt-4 text-sm font-semibold text-sky-200">{user?.email ?? "Signed in"}</div>
           </div>
         </div>
+
+        {user && <HomeCampaignManager user={user} />}
+        {user && <CouponManager user={user} />}
 
         <section id="customer-orders" className="mb-8 scroll-mt-6 rounded-3xl border border-sky-400/20 bg-slate-900 p-5">
           <div className="mb-4 flex items-center justify-between">

@@ -338,7 +338,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     try {
       await startStripeCheckout(cart, (href) => router.push(href));
     } catch (error) {
-      setCheckoutError(error instanceof Error ? error.message : "Unable to start secure checkout.");
+      setCheckoutError(error instanceof Error ? error.message : "Unable to prepare your order summary.");
       setCheckoutBusy(false);
     }
   };
@@ -450,7 +450,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
               const lineKey = getCartLineKey(line);
               return <article className="ar-cart-line" key={lineKey}><div className="ar-cart-image">{product.image && <img src={product.image} alt="" />}</div><div className="ar-cart-line-copy"><small>{product.brand}</small><strong>{product.name.replace(/^\[TEST\]\s*/, "")}</strong><span>{[color && `Color: ${color}`, size && `Size: ${size}`].filter(Boolean).join(" · ") || money(product.price)}</span>{(color || size) && <span>{money(product.price)}</span>}<div className="ar-quantity"><button type="button" aria-label={`Remove one ${product.name}`} onClick={() => changeQuantity(lineKey, -1)}><Minus size={13} /></button><span>{quantity}</span><button type="button" aria-label={`Add one ${product.name}`} onClick={() => changeQuantity(lineKey, 1)} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={13} /></button></div></div><button className="ar-remove-line" type="button" aria-label={`Remove ${product.name}`} onClick={() => persistCart(cart.filter((item) => getCartLineKey(item) !== lineKey))}><X size={16} /></button></article>;
             })}</div>
-            <div className="ar-cart-bottom"><div><span>SUBTOTAL</span><strong>{money(cartTotal)}</strong></div><small>Secure card checkout. Apple Pay appears automatically on supported devices.</small><button className="ar-button ar-button-light ar-checkout" type="button" onClick={() => void checkout()} disabled={checkoutBusy}>{checkoutBusy ? "OPENING SECURE CHECKOUT..." : "PROCEED TO PAYMENT"} <ArrowRight size={16} /></button></div>
+            <div className="ar-cart-bottom"><div><span>SUBTOTAL</span><strong>{money(cartTotal)}</strong></div><small>Review your order before secure payment. Apple Pay appears on supported devices.</small><button className="ar-button ar-button-light ar-checkout" type="button" onClick={() => void checkout()} disabled={checkoutBusy}>{checkoutBusy ? "PREPARING SUMMARY..." : "PROCEED TO PAYMENT"} <ArrowRight size={16} /></button></div>
           </>}
         </aside>
       </div>}

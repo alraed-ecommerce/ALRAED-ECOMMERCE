@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { getStripe } from "@/lib/stripe";
+import { toFils } from "@/lib/checkout-pricing";
 
 type CheckoutOrder = {
   order_id: string;
   total: number;
+  coupon_code: string | null;
+  coupon_discount: number;
+  checkout_session_id: string | null;
+  session_expires_at: number;
   items: Array<{ product_name: string; quantity: number; unit_price: number }>;
 };
 
@@ -32,7 +37,23 @@ export async function POST(request: Request) {
     if (siteUrl.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(siteUrl.hostname)) {
       return NextResponse.json({ error: "NEXT_PUBLIC_SITE_URL must use HTTPS outside local development." }, { status: 500 });
     }
-    const body = await request.json() as { products?: unknown; addressId?: unknown; notes?: unknown };
+    const body = await request.json() as {
+      products?: unknown;
+      addressId?: unknown;
+      notes?: unknown;
+      couponCode?: unknown;
+      checkoutAttemptId?: unknown;
+    };
+    if (typeof body.checkoutAttemptId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.checkoutAttemptId)) {
+      return NextResponse.json({ error: "The checkout attempt reference is invalid. Refresh the summary and try again." }, { status: 400 });
+    }
+    if (body.couponCode !== undefined && typeof body.couponCode !== "string") {
+      return NextResponse.json({ error: "Enter a valid coupon code." }, { status: 400 });
+    }
+    const couponCode = typeof body.couponCode === "string" ? body.couponCode.trim().toUpperCase() : "";
+    if (couponCode && !/^[A-Z0-9_-]{1,40}$/.test(couponCode)) {
+      return NextResponse.json({ error: "Enter a valid coupon code." }, { status: 400 });
+    }
 
     if (!Array.isArray(body.products) || body.products.length < 1 || body.products.length > 30) {
       return NextResponse.json({ error: "Your shopping bag is empty or contains too many items." }, { status: 400 });
@@ -85,7 +106,8 @@ export async function POST(request: Request) {
       : addresses.find((address) => address.is_default);
     if (!shippingAddress) return NextResponse.json({ error: "Choose or save a delivery address in your account before checkout." }, { status: 400 });
 
-    const { data, error: orderError } = await supabase.rpc("create_stripe_checkout_order", {
+    const { data, error: orderError } = await supabase.rpc("create_stripe_checkout_order_once", {
+      p_checkout_attempt_id: body.checkoutAttemptId,
       p_user_id: profile.id,
       p_customer_name: profile.full_name || identity.name || identity.email || "Customer",
       p_customer_phone: profile.phone,
@@ -93,13 +115,19 @@ export async function POST(request: Request) {
       p_address: shippingAddress.address,
       p_notes: typeof body.notes === "string" ? body.notes.trim().slice(0, 500) || null : null,
       p_variant_schema_version: 2,
+      p_coupon_code: couponCode,
       p_items: Array.from(itemsByVariant.values())
         .sort((a, b) => a.product_id - b.product_id || (a.color ?? "").localeCompare(b.color ?? "") || (a.size ?? "").localeCompare(b.size ?? "")),
     });
 
     if (orderError) {
+      const couponError = orderError.message.match(/COUPON_INVALID:(.*)/);
+      if (couponError) return NextResponse.json({ error: couponError[1] }, { status: 400 });
+      if (orderError.message.includes("CHECKOUT_ATTEMPT_USED") || orderError.message.includes("CHECKOUT_ATTEMPT_MISMATCH")) {
+        return NextResponse.json({ error: "This checkout attempt can no longer be used. Start payment again from your summary." }, { status: 409 });
+      }
       if (orderError.code === "42703" || orderError.code === "42883" || orderError.code === "PGRST202") {
-        return NextResponse.json({ error: "Checkout database setup is incomplete. Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql, then SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql in the Supabase SQL Editor." }, { status: 503 });
+        return NextResponse.json({ error: "Checkout setup is incomplete. Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql, SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql, and SUPABASE_ORDER_SUMMARY_COUPONS_MIGRATION.sql in the Supabase SQL Editor." }, { status: 503 });
       }
       if (orderError.message.includes("INSUFFICIENT_STOCK:")) return NextResponse.json({ error: "A product no longer has enough stock. Update your bag and try again." }, { status: 409 });
       if (orderError.message.includes("INSUFFICIENT_SIZE_STOCK:")) return NextResponse.json({ error: "That shoe size no longer has enough pairs. Update your bag and try again." }, { status: 409 });
@@ -112,26 +140,72 @@ export async function POST(request: Request) {
     }
 
     const order = data as CheckoutOrder;
+    if (order.checkout_session_id) {
+      const existingSession = await stripe.checkout.sessions.retrieve(order.checkout_session_id);
+      if (existingSession.status === "open" && existingSession.url) {
+        return NextResponse.json({ url: existingSession.url });
+      }
+      if (existingSession.status === "expired") {
+        await releaseOrder(supabase, order.order_id);
+        return NextResponse.json({ error: "This payment session expired. Review your summary and try again." }, { status: 409, headers: { "X-Checkout-Retry": "new-attempt" } });
+      }
+      return NextResponse.json({ error: "This payment is already being processed. Check your orders before trying again." }, { status: 409 });
+    }
+    if (order.session_expires_at * 1000 < Date.now() + 30 * 60 * 1000) {
+      await releaseOrder(supabase, order.order_id);
+      return NextResponse.json({ error: "This checkout attempt expired. Review your summary and try again." }, { status: 409, headers: { "X-Checkout-Retry": "new-attempt" } });
+    }
+
     let session;
     try {
+      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = order.items.map((item) => ({
+        quantity: item.quantity,
+        price_data: {
+          currency: "aed",
+          unit_amount: toFils(item.unit_price),
+          product_data: { name: item.product_name },
+        },
+      }));
+      lineItems.push(
+        {
+          quantity: 1,
+          price_data: {
+            currency: "aed",
+            unit_amount: 1000,
+            product_data: { name: "Delivery fee" },
+          },
+        },
+        {
+          quantity: 1,
+          price_data: {
+            currency: "aed",
+            unit_amount: 200,
+            product_data: { name: "Handling fee" },
+          },
+        },
+      );
+      let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
+      if (order.coupon_code && order.coupon_discount > 0) {
+        const stripeCoupon = await stripe.coupons.create({
+          amount_off: toFils(order.coupon_discount),
+          currency: "aed",
+          duration: "once",
+          name: `${order.coupon_code} discount`,
+        }, { idempotencyKey: `alraed-coupon-${body.checkoutAttemptId}` });
+        discounts = [{ coupon: stripeCoupon.id }];
+      }
       session = await stripe.checkout.sessions.create({
         mode: "payment",
         payment_method_types: ["card"],
         client_reference_id: order.order_id,
         customer_email: identity.email ?? undefined,
-        line_items: order.items.map((item) => ({
-          quantity: item.quantity,
-          price_data: {
-            currency: "aed",
-            unit_amount: Math.round(Number(item.unit_price) * 100),
-            product_data: { name: item.product_name },
-          },
-        })),
+        line_items: lineItems,
+        ...(discounts ? { discounts } : {}),
         metadata: { order_id: order.order_id },
-        expires_at: Math.floor(Date.now() / 1000) + 60 * 60,
+        expires_at: order.session_expires_at,
         success_url: `${siteUrl.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${siteUrl.origin}/checkout/cancelled?order_id=${encodeURIComponent(order.order_id)}`,
-      });
+      }, { idempotencyKey: `alraed-checkout-${body.checkoutAttemptId}` });
     } catch (stripeError) {
       await releaseOrder(supabase, order.order_id);
       throw stripeError;
@@ -142,6 +216,14 @@ export async function POST(request: Request) {
       p_session_id: session.id,
     });
     if (sessionLinkError) {
+      const { data: linkedOrder } = await supabase
+        .from("orders")
+        .select("stripe_checkout_session_id")
+        .eq("id", order.order_id)
+        .maybeSingle();
+      if (linkedOrder?.stripe_checkout_session_id === session.id && session.url) {
+        return NextResponse.json({ url: session.url });
+      }
       try {
         await stripe.checkout.sessions.expire(session.id);
       } catch (expireError) {

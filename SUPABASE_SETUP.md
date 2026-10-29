@@ -137,12 +137,18 @@ For an existing database, run these files in the Supabase SQL Editor, in order:
 4. `SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql`
 5. `SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql`
 6. `SUPABASE_ORDER_NOTIFICATION_MIGRATION.sql`
+7. `SUPABASE_HOME_CAMPAIGNS_MIGRATION.sql`
+8. `SUPABASE_ORDER_SUMMARY_COUPONS_MIGRATION.sql`
 
 The first migration adds saved customer addresses and ensures Firebase user IDs have a non-partial unique index required by profile upserts. If account details fail to save on an existing database, rerun `SUPABASE_ACCOUNT_MIGRATION.sql` in the Supabase SQL Editor. The second adds server-only database functions that create orders using current Supabase product names/prices and atomically mark paid orders while deducting inventory. The third adds normalized unique product SKUs and Zoho product IDs, a stock-sync timestamp, and the server-only function used for atomic Zoho stock updates. The Zoho product ID is stored for admin billing/stock management and is not returned by the public product API. Apply this migration before creating or editing products with that field.
 
 The fourth migration adds Stripe checkout inventory reservations. The latest version of the fifth migration adds admin-configurable product types, racquet colors, audience-specific shoe sizes, and a quantity for every shoe size. In the admin dashboard, choose Shoes, Racquets, or Other gear first. Shoes can use men's UK 2–15 or women's/kids' UK 2–11 sizes; use the plus/minus controls on each size tile to set its stock. The total shoe stock is calculated automatically. Customers see the sizes with stock, and zero-stock sizes are greyed out and cannot be selected. Shoe colors are separate product listings, not selectable variants; racquets may still have color choices. The migration also updates checkout to reserve and deduct shoe inventory by size. Rerun the latest `SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql` if an earlier version was already applied. Existing shoe quantities cannot be safely mapped to sizes, so set actual per-size stock in the admin dashboard after migration; until then, shoe sizes stay unavailable. Shoe stock is managed by size in the admin dashboard rather than Zoho's aggregate stock sync.
 
 The sixth migration adds atomic per-channel order-confirmation delivery state and the optional WhatsApp consent field. Apply it before deploying the email/WhatsApp notification code; setup of the Resend and official WhatsApp Cloud API variables is documented in `README.md`.
+
+The seventh migration creates the homepage poster table and seeds it with the current homepage campaigns. Apply it to enable poster creation, editing, ordering, publishing, and hiding in the admin dashboard. Poster images upload to the existing public `product-images` storage bucket.
+
+The eighth migration creates the private coupon table and adds order-summary fees, discounts, coupon redemption reservations, and checkout-attempt idempotency. Apply it after the Stripe checkout and product-variant migrations. Customers then review a server-priced order summary before Stripe payment; coupons are managed in the authorized admin dashboard. Delivery and handling fees are AED 10 and AED 2 respectively.
 
 Do not use a client-provided price to create orders. The existing `/api/orders` route sends only product IDs and quantities to the database function. The service role key must remain server-only.
 

@@ -1092,6 +1092,72 @@ body { background: #090b0f; color: #f5f7fa; }
 	.athlete-subject { transition-duration: 2.2s !important; }
 }
 
+.checkout-summary-shell { max-width: 1240px; }
+.checkout-summary-shell .account-page-heading { align-items: flex-end; gap: 20px; }
+.checkout-summary-secure { align-items: center; color: var(--muted); display: inline-flex; font-size: 11px; gap: 8px; padding-bottom: 5px; }
+.checkout-summary-secure svg,
+.checkout-summary-payment-note svg { flex: 0 0 auto; }
+.checkout-summary-layout { align-items: start; display: grid; gap: 18px; grid-template-columns: minmax(0, 1.5fr) minmax(300px, .8fr); }
+.checkout-summary-items,
+.checkout-summary-totals { border-radius: 14px; }
+.checkout-summary-item-list { display: grid; }
+.checkout-summary-item { align-items: center; border-bottom: 1px solid var(--theme-border); display: flex; gap: 15px; min-width: 0; padding: 17px 0; }
+.checkout-summary-item:first-child { padding-top: 0; }
+.checkout-summary-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.checkout-summary-image { align-items: center; background: var(--paper); border: 1px solid var(--theme-border); border-radius: 10px; color: var(--muted); display: flex; flex: 0 0 76px; height: 76px; justify-content: center; overflow: hidden; }
+.checkout-summary-image img { height: 100%; object-fit: contain; padding: 6px; width: 100%; }
+.checkout-summary-item-copy { display: grid; flex: 1; gap: 5px; min-width: 0; }
+.checkout-summary-item-copy > strong { color: var(--ink); font-size: 13px; font-weight: 650; line-height: 1.4; }
+.checkout-summary-item-copy > span { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.checkout-summary-line-total { color: var(--ink); font-size: 12px; white-space: nowrap; }
+.checkout-summary-address { border-top: 1px solid var(--theme-border); display: grid; gap: 5px; margin-top: 19px; padding-top: 15px; }
+.checkout-summary-address strong { color: var(--ink); font-size: 11px; }
+.checkout-summary-address span { color: var(--muted); font-size: 11px; line-height: 1.55; }
+.checkout-coupon-form { display: grid; gap: 8px; }
+.checkout-coupon-form label { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.checkout-coupon-input { display: flex; }
+.checkout-coupon-input input { background: var(--paper); border: 1px solid var(--theme-border); border-radius: 7px 0 0 7px; color: var(--ink); flex: 1; font: inherit; font-size: 12px; min-width: 0; outline: none; padding: 11px 12px; }
+.checkout-coupon-input input:focus { border-color: var(--ink); }
+.checkout-coupon-input button { align-items: center; background: var(--ink); border: 1px solid var(--ink); border-radius: 0 7px 7px 0; color: var(--paper); cursor: pointer; display: inline-flex; font-size: 11px; font-weight: 700; justify-content: center; min-width: 70px; padding: 0 14px; }
+.checkout-coupon-input button:disabled { cursor: wait; opacity: .55; }
+.checkout-coupon-message,
+.checkout-applied-coupon { align-items: center; color: #24814f; display: flex; font-size: 11px; gap: 6px; line-height: 1.45; margin-top: 10px; }
+.checkout-coupon-message.is-error { color: #bf3d33; }
+.checkout-applied-coupon { background: var(--paper); border: 1px solid var(--theme-border); border-radius: 7px; color: var(--ink); justify-content: space-between; padding: 9px 10px; }
+.checkout-applied-coupon button { background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; text-decoration: underline; }
+.checkout-price-rows { border-top: 1px solid var(--theme-border); display: grid; gap: 13px; margin-top: 21px; padding-top: 17px; }
+.checkout-price-rows > div { align-items: center; color: var(--muted); display: flex; font-size: 12px; justify-content: space-between; gap: 12px; }
+.checkout-price-rows > div strong { color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.checkout-price-rows > .checkout-discount-row,
+.checkout-price-rows > .checkout-discount-row strong { color: #24814f; }
+.checkout-price-rows > .checkout-final-total { border-top: 1px solid var(--theme-border); color: var(--ink); font-size: 13px; font-weight: 700; margin-top: 3px; padding-top: 15px; }
+.checkout-price-rows > .checkout-final-total strong { font-size: 20px; }
+.checkout-pay-button { gap: 9px; margin-top: 18px; width: 100%; }
+.checkout-summary-payment-note { align-items: flex-start; color: var(--muted); display: flex; font-size: 9px; gap: 7px; line-height: 1.5; margin-top: 11px; }
+.checkout-summary-back-link { align-items: center; color: var(--muted); display: inline-flex; font-size: 10px; gap: 7px; margin-top: 19px; }
+.checkout-summary-back-link:hover { color: var(--ink); }
+.checkout-summary-error { color: #bf3d33; font-size: 11px; margin-top: 12px; }
+.checkout-summary-empty { align-items: center; display: flex; flex-direction: column; gap: 12px; padding: 45px 20px; text-align: center; }
+.checkout-summary-empty > svg { color: var(--muted); }
+.checkout-summary-empty h2 { color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 22px; }
+.checkout-summary-empty p { color: var(--muted); font-size: 12px; }
+.checkout-summary-empty .account-primary-button { margin-top: 5px; }
+.checkout-summary-page .account-footer { display: flex; gap: 22px; justify-content: center; margin: 20px auto 0; max-width: 1240px; padding: 20px; }
+.checkout-spinning { animation: checkout-spin .8s linear infinite; }
+@keyframes checkout-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .checkout-summary-shell .account-page-heading { align-items: flex-start; flex-direction: column; }
+  .checkout-summary-layout { grid-template-columns: minmax(0, 1fr); }
+  .checkout-summary-item { gap: 10px; }
+  .checkout-summary-image { flex-basis: 62px; height: 62px; }
+  .checkout-summary-item-copy > strong { font-size: 12px; }
+  .checkout-summary-item-copy > span { font-size: 10px; }
+  .checkout-summary-line-total { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .checkout-spinning { animation-duration: 1.5s; }
+}
+
 /* Customer account and saved-checkout flow */
 .account-page { background: #090b0f; color: #f5f7fa; min-height: 100vh; }
 .account-header { align-items: center; border-bottom: 1px solid #252b34; display: flex; justify-content: space-between; min-height: 82px; padding: 0 clamp(22px, 6vw, 90px); }

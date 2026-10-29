@@ -7,6 +7,7 @@ import AthleteShowcase from "./AthleteShowcase";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
 import { getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
+import type { HomeCampaign } from "@/lib/home-campaigns";
 import {
   ArrowDown,
   ArrowLeft,
@@ -69,17 +70,30 @@ const categories = [
   { name: "Accessories", note: "The little things", image: "/product1.jpg" },
 ];
 
-const campaigns = [
+type CampaignSlide = {
+  eyebrow: string;
+  title: string;
+  titleEmphasis: string;
+  description: string;
+  cta: string;
+  image: string;
+  href?: string;
+  layout?: string;
+};
+
+const campaigns: CampaignSlide[] = [
   {
     eyebrow: "BADMINTON · NEW ARRIVALS",
-    title: <>Fresh gear.<br /><em>Fresh energy.</em></>,
+    title: "Fresh gear.",
+    titleEmphasis: "Fresh energy.",
     description: "New badminton essentials have landed. Find your next racket, shoes and court-day favourites.",
     cta: "SHOP NEW ARRIVALS",
     image: "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=2200&q=90",
   },
   {
     eyebrow: "TENNIS ACCESSORIES & GEAR",
-    title: <>Gear up.<br /><em>Play on.</em></>,
+    title: "Gear up.",
+    titleEmphasis: "Play on.",
     description: "From rackets and balls to shoes, bags and accessories, find everything you need for your next match.",
     cta: "SHOP TENNIS GEAR",
     href: "/shop?category=Tennis",
@@ -87,7 +101,8 @@ const campaigns = [
   },
   {
     eyebrow: "PICKLEBALL · COURT ESSENTIALS",
-    title: <>Pick your paddle.<br /><em>Own the court.</em></>,
+    title: "Pick your paddle.",
+    titleEmphasis: "Own the court.",
     description: "Shop pickleball paddles, balls and court essentials for your next game.",
     cta: "SHOP PICKLEBALL",
     href: "/shop?category=Pickleball",
@@ -95,7 +110,8 @@ const campaigns = [
   },
   {
     eyebrow: "TENNIS · RACQUET COLLECTION",
-    title: <>Find your<br /><em>winning edge.</em></>,
+    title: "Find your",
+    titleEmphasis: "winning edge.",
     description: "Explore tennis racquets and court essentials made for confident serves, sharp returns and every rally.",
     cta: "SHOP TENNIS EQUIPMENT",
     href: "/shop?category=Tennis",
@@ -103,14 +119,16 @@ const campaigns = [
   },
   {
     eyebrow: "BADMINTON · DID YOU KNOW?",
-    title: <>Made for<br /><em>every rally.</em></>,
+    title: "Made for",
+    titleEmphasis: "every rally.",
     description: "A feather shuttlecock's 16 feathers help it fly true. Find shuttlecocks selected for your game.",
     cta: "SHOP SHUTTLECOCKS",
     image: "/product2.jpg",
   },
   {
     eyebrow: "TENNIS · PLAYER PLAYBOOK",
-    title: <>Split-step.<br /><em>Stay ready.</em></>,
+    title: "Split-step.",
+    titleEmphasis: "Stay ready.",
     description: "Time a small split-step as your opponent hits to be ready to move in any direction.",
     cta: "EXPLORE TENNIS GEAR",
     href: "/shop?category=Tennis",
@@ -118,7 +136,8 @@ const campaigns = [
   },
   {
     eyebrow: "TENNIS · COURT STRATEGY",
-    title: <>Own the baseline.<br /><em>Rule the rally.</em></>,
+    title: "Own the baseline.",
+    titleEmphasis: "Rule the rally.",
     description: "Build your point from the baseline, move your opponent and step in when the moment is right.",
     cta: "EXPLORE TENNIS GEAR",
     href: "/shop?category=Tennis",
@@ -126,14 +145,16 @@ const campaigns = [
   },
   {
     eyebrow: "BADMINTON · TENNIS · PICKLEBALL",
-    title: <>Play more.<br /><em>Love every point.</em></>,
+    title: "Play more.",
+    titleEmphasis: "Love every point.",
     description: "From first serve to match point, find the kit that makes every session feel like yours.",
     cta: "FIND YOUR GEAR",
     image: "/product1.jpg",
   },
   {
     eyebrow: "YONEX · TENNIS SHOES",
-    title: <>Move with<br /><em>confidence.</em></>,
+    title: "Move with",
+    titleEmphasis: "confidence.",
     description: "Responsive court shoes made to support every split-step, sprint and change of direction.",
     cta: "SHOP TENNIS SHOES",
     href: "/shop?category=Tennis",
@@ -142,7 +163,8 @@ const campaigns = [
   },
   {
     eyebrow: "YONEX · COURT SHOES",
-    title: <>Own every<br /><em>step.</em></>,
+    title: "Own every",
+    titleEmphasis: "step.",
     description: "Find a secure, comfortable fit for quick footwork and long rallies on court.",
     cta: "EXPLORE COURT SHOES",
     href: "/shop?category=Tennis",
@@ -367,6 +389,7 @@ export default function Home() {
   const [wishlist, setWishlist] = useState<number[]>([]);
   const [wishlistReady, setWishlistReady] = useState(false);
   const [campaignIndex, setCampaignIndex] = useState(0);
+  const [homeCampaigns, setHomeCampaigns] = useState<CampaignSlide[] | null>(null);
   const [justAdded, setJustAdded] = useState<number[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
   const [announcementIndex, setAnnouncementIndex] = useState(0);
@@ -433,11 +456,44 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    fetch("/api/home-campaigns", { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json() as { campaigns?: HomeCampaign[]; error?: string };
+        if (!response.ok) throw new Error(result.error || "Unable to load homepage posters.");
+        return result.campaigns ?? [];
+      })
+      .then((rows) => {
+        if (!active) return;
+        setHomeCampaigns(rows.map((campaign) => ({
+          eyebrow: campaign.eyebrow,
+          title: campaign.title,
+          titleEmphasis: campaign.title_emphasis,
+          description: campaign.description,
+          cta: campaign.cta_label,
+          image: campaign.image_url,
+          href: campaign.href,
+          layout: campaign.layout,
+        })));
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.warn("Using built-in homepage campaigns because admin posters could not be loaded.", error);
+        setHomeCampaigns(null);
+      });
+
+    return () => { active = false; };
+  }, []);
+
+  const visibleCampaigns = homeCampaigns ?? campaigns;
+
+  useEffect(() => {
+    if (visibleCampaigns.length < 2) return;
     const timer = window.setInterval(() => {
-      setCampaignIndex((index) => (index + 1) % campaigns.length);
+      setCampaignIndex((index) => (index + 1) % visibleCampaigns.length);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [visibleCampaigns.length]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setAnnouncementIndex((index) => (index + 1) % 3), 4500);
@@ -598,14 +654,15 @@ export default function Home() {
     try {
       await startStripeCheckout(cart, (href) => router.push(href));
     } catch (error) {
-      setCheckoutError(error instanceof Error ? error.message : "Unable to start secure checkout.");
+      setCheckoutError(error instanceof Error ? error.message : "Unable to prepare your order summary.");
       setCheckoutBusy(false);
     }
   };
 
-  const campaign = campaigns[campaignIndex];
+  const activeCampaignIndex = visibleCampaigns.length ? campaignIndex % visibleCampaigns.length : 0;
+  const campaign = visibleCampaigns[activeCampaignIndex];
   const showCampaign = (nextIndex: number) => {
-    if (nextIndex === campaignIndex) return;
+    if (nextIndex === activeCampaignIndex) return;
     setCampaignIndex(nextIndex);
   };
   const productList = query || activeCategory !== "All" ? filteredProducts : newArrivals;
@@ -663,18 +720,18 @@ export default function Home() {
         <p>Products, options and checkout are for demonstration only. Orders and payments are not currently being processed.</p>
       </aside>
 
-      <section className="ar-hero" data-campaign-layout={campaign.layout ?? "standard"} aria-label="Featured campaign">
+      {campaign && <section className="ar-hero" data-campaign-layout={campaign.layout ?? "standard"} aria-label="Featured campaign">
         <img key={campaign.image} className={`ar-hero-image${campaign.layout ? ` ar-hero-image-${campaign.layout}` : ""}`} src={campaign.image} alt="" />
         <div className="ar-hero-shade" />
-        <div className="ar-hero-copy" key={campaignIndex}>
+        <div className="ar-hero-copy" key={activeCampaignIndex}>
           <p className="ar-eyebrow"><span /> {campaign.eyebrow}</p>
-          <h1>{campaign.title}</h1>
+          <h1>{campaign.title}<br /><em>{campaign.titleEmphasis}</em></h1>
           <p className="ar-hero-description">{campaign.description}</p>
           <Link className="ar-button ar-button-light" href={campaign.href ?? "/shop"}>{campaign.cta}<ArrowRight size={16} /></Link>
         </div>
-        <div className="ar-hero-controls" aria-label="Campaign slides">{campaigns.map((item, index) => <button className={index === campaignIndex ? "is-active" : ""} type="button" key={item.eyebrow} aria-label={`Show campaign ${index + 1} of ${campaigns.length}`} aria-pressed={index === campaignIndex} onClick={() => showCampaign(index)} />)}</div>
+        <div className="ar-hero-controls" aria-label="Campaign slides">{visibleCampaigns.map((item, index) => <button className={index === activeCampaignIndex ? "is-active" : ""} type="button" key={item.eyebrow} aria-label={`Show campaign ${index + 1} of ${visibleCampaigns.length}`} aria-pressed={index === activeCampaignIndex} onClick={() => showCampaign(index)} />)}</div>
         <a className="ar-hero-scroll" href="#service"><ArrowDown size={14} /> SCROLL TO EXPLORE</a>
-      </section>
+      </section>}
 
       <section className="ar-service-strip" id="service" aria-label="Shopping benefits">
         <div><span>01</span><div><strong>MADE FOR THE UAE</strong><small>Local know-how, local support</small></div></div>
@@ -832,7 +889,7 @@ export default function Home() {
               const lineKey = getCartLineKey(line);
               return <article className="ar-cart-line" key={lineKey}><div className="ar-cart-image">{product.image && <img src={product.image} alt="" />}</div><div className="ar-cart-line-copy"><small>{product.brand}</small><strong>{product.name.replace(/^\[TEST\]\s*/, "")}</strong>{(color || size) && <span>{[color && `Color: ${color}`, size && `Size: ${size}`].filter(Boolean).join(" · ")}</span>}<span>{money(product.price)}</span><div className="ar-quantity"><button type="button" aria-label={`Remove one ${product.name}`} onClick={() => changeQuantity(lineKey, -1)}><Minus size={13} /></button><span>{quantity}</span><button type="button" aria-label={`Add one ${product.name}`} onClick={() => changeQuantity(lineKey, 1)} disabled={quantity >= Math.min(product.stock, 50)}><Plus size={13} /></button></div></div><button className="ar-remove-line" type="button" aria-label={`Remove ${product.name}`} onClick={() => setCart((items) => items.filter((item) => getCartLineKey(item) !== lineKey))}><X size={16} /></button></article>;
             })}</div>
-            <div className="ar-cart-bottom"><div><span>SUBTOTAL</span><strong>{money(cartTotal)}</strong></div><small>Secure card checkout. Apple Pay appears automatically on supported devices.</small><button className="ar-button ar-button-light ar-checkout" type="button" onClick={() => void handleStripeCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "OPENING SECURE CHECKOUT..." : "PROCEED TO PAYMENT"} <ArrowRight size={16} /></button></div>
+            <div className="ar-cart-bottom"><div><span>SUBTOTAL</span><strong>{money(cartTotal)}</strong></div><small>Review your order before secure payment. Apple Pay appears on supported devices.</small><button className="ar-button ar-button-light ar-checkout" type="button" onClick={() => void handleStripeCheckout()} disabled={checkoutBusy}>{checkoutBusy ? "PREPARING SUMMARY..." : "PROCEED TO PAYMENT"} <ArrowRight size={16} /></button></div>
           </>}
         </aside>
       </div>}

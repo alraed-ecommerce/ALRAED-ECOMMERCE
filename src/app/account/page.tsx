@@ -188,12 +188,10 @@ export default function AccountPage() {
 
   const setDefaultAddress = async (addressId: string) => {
     if (!profile || !user) return;
-    setProfile({ ...profile, addresses: profile.addresses?.map((address) => ({ ...address, is_default: address.id === addressId })) ?? [] });
-    setAddressFormOpen(false);
-    setEditingAddressId(null);
     const nextAddresses = profile.addresses?.map((address) => ({ ...address, is_default: address.id === addressId })) ?? [];
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/profile", {
@@ -204,7 +202,10 @@ export default function AccountPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to update your default address.");
       setProfile(result.profile);
+      setPhone(result.profile.phone ?? "");
       setWhatsappOrderUpdatesOptIn(result.profile.whatsapp_order_updates_opt_in === true);
+      setAddressFormOpen(false);
+      setEditingAddressId(null);
       setNotice("Default delivery address updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to update your default address.");

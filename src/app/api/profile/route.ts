@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeDefaultAddresses } from "@/lib/account-addresses";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 
 const unauthorized = () => NextResponse.json({ error: "Please sign in to access your account." }, { status: 401 });
@@ -46,14 +47,14 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Add at least one delivery address." }, { status: 400 });
     }
 
-    const addresses = body.addresses.map((value, index) => {
+    const addresses = body.addresses.map((value) => {
       const address = value as Record<string, unknown>;
       return {
         id: typeof address.id === "string" ? address.id.slice(0, 80) : crypto.randomUUID(),
         label: typeof address.label === "string" ? address.label.trim().slice(0, 40) : "",
         city: typeof address.city === "string" ? address.city.trim().slice(0, 80) : "",
         address: typeof address.address === "string" ? address.address.trim().slice(0, 300) : "",
-        is_default: address.is_default === true || index === 0,
+        is_default: address.is_default === true,
       };
     });
 
@@ -61,8 +62,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Complete the label, city, and street address for every address." }, { status: 400 });
     }
 
-    const defaultIndex = addresses.findIndex((address) => address.is_default);
-    const normalizedAddresses = addresses.map((address, index) => ({ ...address, is_default: index === (defaultIndex < 0 ? 0 : defaultIndex) }));
+    const normalizedAddresses = normalizeDefaultAddresses(addresses);
 
     const { data: profile, error } = await supabase
       .from("profiles")
