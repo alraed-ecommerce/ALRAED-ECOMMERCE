@@ -30,7 +30,6 @@ function getProductDetails(product: StoreProduct): ProductDetails {
     specifications: {
       Brand: product.brand || "Al Raed Sports",
       Category: product.category,
-      Inventory: product.stock > 0 ? `${product.stock} in stock` : "Currently unavailable",
       "Technical specifications": "Contact us to confirm product-specific details",
     },
   };
@@ -131,7 +130,7 @@ export default function ProductDetailDialog({
             <p className="ar-product-detail-description">{details.description}</p>
             <div className="ar-product-detail-price">
               <strong>{money(product.price)}</strong>
-              <span className={product.stock > 0 && product.stockStatus !== "unavailable" ? "is-in-stock" : "is-out-of-stock"}>{product.stockStatus === "unavailable" ? "STOCK TEMPORARILY UNAVAILABLE" : product.stock > 0 ? `${product.stock} IN STOCK` : "CURRENTLY UNAVAILABLE"}</span>
+              <span className={product.stock > 0 && product.stockStatus !== "unavailable" ? "is-in-stock" : "is-out-of-stock"}>{product.stockStatus === "unavailable" ? "STOCK TEMPORARILY UNAVAILABLE" : product.stock > 0 ? "IN STOCK" : "CURRENTLY UNAVAILABLE"}</span>
             </div>
             {(product.colors.length > 0 || product.sizes.length > 0 || needsSize) && (
               <div className="ar-product-variants">
@@ -151,7 +150,7 @@ export default function ProductDetailDialog({
                       {product.sizes.map((size) => {
                         const availableQuantity = product.sizeStock[size] ?? 0;
                         const unavailable = product.unavailableSizes.includes(size) || availableQuantity < 1;
-                        return <button key={size} type="button" className={selectedSize === size ? "is-selected" : ""} aria-pressed={selectedSize === size} aria-label={`${size}${unavailable ? ", out of stock" : `, ${availableQuantity} available`}`} disabled={unavailable} onClick={() => changeSize(size)}>{size}<span>{unavailable ? "OUT OF STOCK" : `${availableQuantity} AVAILABLE`}</span></button>;
+                        return <button key={size} type="button" className={selectedSize === size ? "is-selected" : ""} aria-pressed={selectedSize === size} aria-label={`${size}${unavailable ? ", out of stock" : ", available"}`} disabled={unavailable} onClick={() => changeSize(size)}>{size}<span>{unavailable ? "OUT OF STOCK" : "AVAILABLE"}</span></button>;
                       })}
                     </div>
                   </label>

@@ -52,19 +52,6 @@ const normalizeOptions = (value: unknown, label: string) => {
   }
   return { values, error: undefined };
 };
-const normalizeSizeStock = (value: unknown, allowedSizes: string[]) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { values: undefined, error: "Enter a quantity for every shoe size." };
-  }
-  const entries = Object.entries(value);
-  if (entries.some(([size, quantity]) => !allowedSizes.includes(size) || !Number.isInteger(quantity) || Number(quantity) < 0 || Number(quantity) > 100000)) {
-    return { values: undefined, error: "Shoe size quantities must be whole numbers from 0 to 100,000." };
-  }
-  return {
-    values: Object.fromEntries(allowedSizes.map((size) => [size, Number((value as Record<string, unknown>)[size] ?? 0)])),
-    error: undefined,
-  };
-};
 const normalizeSizeSkus = (value: unknown, allowedSizes: string[]) => {
   if (value === undefined) return { values: undefined as Record<string, string> | undefined, error: undefined };
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -149,18 +136,34 @@ export async function POST(request: Request) {
       category?: string;
       price?: string | number;
       image_url?: string;
-      stock?: string | number;
+      stock?: unknown;
+      size_stock?: unknown;
       is_active?: boolean;
       sku?: string | null;
       zoho_product_id?: string | null;
       colors?: unknown;
       sizes?: unknown;
       unavailable_sizes?: unknown;
-      size_stock?: unknown;
       zoho_size_skus?: unknown;
       product_type?: unknown;
       size_category?: unknown;
     };
+
+    if (body.stock !== undefined || body.size_stock !== undefined) {
+      return NextResponse.json({ error: "Stock is read-only and can only be updated by Zoho inventory sync." }, { status: 400 });
+    }
+    if (body.sku !== undefined && body.sku !== null && typeof body.sku !== "string") {
+      return NextResponse.json({ error: "Enter a valid SKU." }, { status: 400 });
+    }
+    if (typeof body.sku === "string" && body.sku.trim().length > 128) {
+      return NextResponse.json({ error: "SKU must be 128 characters or fewer." }, { status: 400 });
+    }
+    if (body.zoho_product_id !== undefined && body.zoho_product_id !== null && typeof body.zoho_product_id !== "string") {
+      return NextResponse.json({ error: "Enter a valid Zoho product ID." }, { status: 400 });
+    }
+    if (typeof body.zoho_product_id === "string" && body.zoho_product_id.trim().length > 128) {
+      return NextResponse.json({ error: "Zoho product ID must be 128 characters or fewer." }, { status: 400 });
+    }
 
     const colors = normalizeOptions(body.colors, "Color");
     const sizes = normalizeOptions(body.sizes, "Size");
@@ -179,14 +182,16 @@ export async function POST(request: Request) {
     if (productType === "shoe" && (typeof body.size_category !== "string" || !allowedSizeCategories.includes(body.size_category as (typeof allowedSizeCategories)[number]))) {
       return NextResponse.json({ error: "Choose a size range for the shoe." }, { status: 400 });
     }
-    const sizeStock = productType === "shoe" && shoeSizeCategory
-      ? normalizeSizeStock(body.size_stock, sizeOptionsByCategory[shoeSizeCategory])
-      : { values: undefined, error: undefined };
-    if (sizeStock.error) return NextResponse.json({ error: sizeStock.error }, { status: 400 });
     const sizeSkus = productType === "shoe" && shoeSizeCategory
       ? normalizeSizeSkus(body.zoho_size_skus, sizeOptionsByCategory[shoeSizeCategory])
       : { values: productType === "shoe" ? {} : undefined, error: undefined };
     if (sizeSkus.error) return NextResponse.json({ error: sizeSkus.error }, { status: 400 });
+    if (productType === "shoe" && !Object.values(sizeSkus.values ?? {}).some(Boolean)) {
+      return NextResponse.json({ error: "Add a Zoho SKU to at least one shoe size. Shoe stock is managed by Zoho." }, { status: 400 });
+    }
+    if (productType !== "shoe" && !normalizeSku(body.sku) && !normalizeZohoProductId(body.zoho_product_id)) {
+      return NextResponse.json({ error: "Enter the exact Zoho SKU or item ID. Stock is managed by Zoho." }, { status: 400 });
+    }
     const sizeSkuConflict = await ensureUniqueSizeSkus(supabase, sizeSkus.values ?? {});
     if (sizeSkuConflict) {
       if (sizeSkuConflict.code === "42703" || sizeSkuConflict.code === "PGRST204") {
@@ -205,26 +210,13 @@ export async function POST(request: Request) {
     if (!body.name?.trim() || !body.brand?.trim() || !body.category || !allowedCategories.includes(body.category)) {
       return NextResponse.json({ error: "Name, brand, and a valid category are required." }, { status: 400 });
     }
-    if (body.sku !== undefined && body.sku !== null && typeof body.sku !== "string") {
-      return NextResponse.json({ error: "Enter a valid SKU." }, { status: 400 });
-    }
-    if (body.zoho_product_id !== undefined && body.zoho_product_id !== null && typeof body.zoho_product_id !== "string") {
-      return NextResponse.json({ error: "Enter a valid Zoho product ID." }, { status: 400 });
-    }
-    if (typeof body.zoho_product_id === "string" && body.zoho_product_id.trim().length > 128) {
-      return NextResponse.json({ error: "Zoho product ID must be 128 characters or fewer." }, { status: 400 });
-    }
-
     const numericPrice = Number(body.price ?? 0);
-    const storedSizeStock = sizeStock.values ? { ...sizeStock.values } : undefined;
-    for (const size of Object.keys(sizeSkus.values ?? {})) {
-      if (storedSizeStock) storedSizeStock[size] = 0;
-    }
-    const shoeStockTotal = storedSizeStock ? Object.values(storedSizeStock).reduce((total, quantity) => total + quantity, 0) : 0;
-    const numericStock = productType === "shoe" ? shoeStockTotal : Number(body.stock ?? 0);
+    const storedSizeStock = productType === "shoe" && shoeSizeCategory
+      ? Object.fromEntries(sizeOptionsByCategory[shoeSizeCategory].map((size) => [size, 0]))
+      : undefined;
 
-    if (!Number.isFinite(numericPrice) || numericPrice <= 0 || !Number.isInteger(numericStock) || numericStock < 0) {
-      return NextResponse.json({ error: "Enter a valid price and stock quantity." }, { status: 400 });
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+      return NextResponse.json({ error: "Enter a valid price." }, { status: 400 });
     }
     if (!body.image_url?.trim()) {
       return NextResponse.json({ error: "Upload a product image before saving." }, { status: 400 });
@@ -238,7 +230,7 @@ export async function POST(request: Request) {
         category: body.category.trim(),
         price: numericPrice,
         image_url: body.image_url.trim(),
-        stock: numericStock,
+        stock: 0,
         sku: productType === "shoe" ? null : normalizeSku(body.sku),
         zoho_product_id: productType === "shoe" ? null : normalizeZohoProductId(body.zoho_product_id),
         ...(productType === "shoe" ? { zoho_size_skus: sizeSkus.values ?? {} } : {}),
@@ -292,9 +284,12 @@ export async function PUT(request: Request) {
     };
 
     if (!body.id) return NextResponse.json({ error: "Product id is required." }, { status: 400 });
+    if (body.stock !== undefined || body.size_stock !== undefined) {
+      return NextResponse.json({ error: "Stock is read-only and can only be updated by Zoho inventory sync." }, { status: 400 });
+    }
     const { data: existingProduct, error: existingProductError } = await supabase
       .from("products")
-      .select("product_type, size_category, zoho_size_skus, zoho_size_item_ids, zoho_size_stock_synced_at")
+      .select("product_type, size_category, sku, zoho_product_id, zoho_size_skus, zoho_size_item_ids, zoho_size_stock_synced_at")
       .eq("id", body.id)
       .maybeSingle();
     if (existingProductError) return databaseErrorResponse(existingProductError);
@@ -316,15 +311,32 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Choose a valid shoe size range." }, { status: 400 });
     }
     const productType = (body.product_type ?? existingProduct.product_type ?? "other") as (typeof allowedProductTypes)[number];
+    if (body.sku !== undefined && body.sku !== null && typeof body.sku !== "string") {
+      return NextResponse.json({ error: "Enter a valid SKU." }, { status: 400 });
+    }
+    if (body.zoho_product_id !== undefined && body.zoho_product_id !== null && typeof body.zoho_product_id !== "string") {
+      return NextResponse.json({ error: "Enter a valid Zoho product ID." }, { status: 400 });
+    }
+    if (typeof body.zoho_product_id === "string" && body.zoho_product_id.trim().length > 128) {
+      return NextResponse.json({ error: "Zoho product ID must be 128 characters or fewer." }, { status: 400 });
+    }
+    if (typeof body.sku === "string" && body.sku.trim().length > 128) {
+      return NextResponse.json({ error: "SKU must be 128 characters or fewer." }, { status: 400 });
+    }
+    const effectiveSku = body.sku === undefined ? existingProduct.sku : body.sku;
+    const effectiveZohoProductId = body.zoho_product_id === undefined ? existingProduct.zoho_product_id : body.zoho_product_id;
+    if (productType !== "shoe" && !normalizeSku(effectiveSku) && !normalizeZohoProductId(effectiveZohoProductId)) {
+      return NextResponse.json({ error: "Enter the exact Zoho SKU or item ID. Stock is managed by Zoho." }, { status: 400 });
+    }
     const sizeCategory = (body.size_category ?? existingProduct.size_category) as (typeof allowedSizeCategories)[number] | null | undefined;
-    const sizeStock = productType === "shoe" && sizeCategory
-      ? normalizeSizeStock(body.size_stock, sizeOptionsByCategory[sizeCategory])
-      : { values: undefined, error: undefined };
-    if (sizeStock.error) return NextResponse.json({ error: sizeStock.error }, { status: 400 });
     const sizeSkus = productType === "shoe" && sizeCategory
       ? normalizeSizeSkus(body.zoho_size_skus, sizeOptionsByCategory[sizeCategory])
       : { values: undefined as Record<string, string> | undefined, error: undefined };
     if (sizeSkus.error) return NextResponse.json({ error: sizeSkus.error }, { status: 400 });
+    const effectiveSizeSkus = sizeSkus.values ?? normalizeStringRecord(existingProduct.zoho_size_skus);
+    if (productType === "shoe" && !Object.values(effectiveSizeSkus).some((sku) => sku.trim())) {
+      return NextResponse.json({ error: "Add a Zoho SKU to at least one shoe size. Shoe stock is managed by Zoho." }, { status: 400 });
+    }
     const sizeSkuConflict = sizeSkus.values
       ? await ensureUniqueSizeSkus(supabase, sizeSkus.values, body.id)
       : null;
@@ -352,8 +364,9 @@ export async function PUT(request: Request) {
     if (productType === "shoe" && sizeCategory) {
       updatePayload.colors = [];
       updatePayload.sizes = sizeOptionsByCategory[sizeCategory];
-      updatePayload.unavailable_sizes = Object.entries(sizeStock.values ?? {}).filter(([, quantity]) => quantity === 0).map(([size]) => size);
-      updatePayload.size_stock = sizeStock.values;
+      if (sizeSkus.values !== undefined) {
+        updatePayload.unavailable_sizes = sizeOptionsByCategory[sizeCategory].filter((size) => !sizeSkus.values?.[size]);
+      }
     } else {
       if (sizes.values !== undefined) updatePayload.sizes = sizes.values;
       if (unavailableSizes.values !== undefined) updatePayload.unavailable_sizes = unavailableSizes.values;
@@ -381,54 +394,6 @@ export async function PUT(request: Request) {
       const price = Number(body.price);
       if (!Number.isFinite(price) || price <= 0) return NextResponse.json({ error: "Enter a valid price." }, { status: 400 });
       updatePayload.price = price;
-    }
-    if (body.stock !== undefined) {
-      const stock = Number(body.stock);
-      if (!Number.isInteger(stock) || stock < 0) return NextResponse.json({ error: "Enter a valid stock quantity." }, { status: 400 });
-      if (productType !== "shoe") {
-        const { error: stockError } = await supabase.rpc("set_product_stock_with_reservations", {
-          p_product_id: body.id,
-          p_stock: stock,
-        });
-        if (stockError?.code === "42883" || stockError?.code === "42P01") {
-          return NextResponse.json({ error: "Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql before updating checkout inventory." }, { status: 503 });
-        }
-        if (stockError?.message.includes("STOCK_BELOW_CHECKOUT_RESERVATIONS:")) {
-          const reservedStock = stockError.message.split(":").at(-1);
-          return NextResponse.json({ error: `This product has ${reservedStock} item(s) reserved in open checkouts. Enter at least ${reservedStock} in stock.` }, { status: 409 });
-        }
-        if (stockError?.message.includes("PRODUCT_NOT_FOUND")) return NextResponse.json({ error: "Product not found." }, { status: 404 });
-        if (stockError) return NextResponse.json({ error: "Unable to safely update product stock." }, { status: 500 });
-      }
-    }
-    const savedSizeSkuValues = Object.values(normalizeStringRecord(existingProduct.zoho_size_skus));
-    const effectiveSizeSkus = sizeSkus.values !== undefined ? Object.values(sizeSkus.values) : savedSizeSkuValues;
-    const hasMappedZohoSizes = productType === "shoe"
-      && effectiveSizeSkus.some((sku) => typeof sku === "string" && sku.trim().length > 0);
-    if (hasMappedZohoSizes) {
-      delete updatePayload.size_stock;
-      delete updatePayload.sizes;
-      delete updatePayload.unavailable_sizes;
-      delete updatePayload.stock;
-    }
-    if (sizeStock.values && productType === "shoe" && !hasMappedZohoSizes) {
-      const { error: sizeStockError } = await supabase.rpc("set_product_size_stock_with_reservations", {
-        p_product_id: body.id,
-        p_size_category: sizeCategory,
-        p_size_stock: sizeStock.values,
-      });
-      if (sizeStockError?.code === "42883" || sizeStockError?.code === "42P01") {
-        return NextResponse.json({ error: "Run the latest SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql before editing shoe inventory." }, { status: 503 });
-      }
-      if (sizeStockError?.message.includes("SIZE_STOCK_BELOW_CHECKOUT_RESERVATIONS:")) {
-        return NextResponse.json({ error: "A size has fewer pairs than are currently reserved in open checkouts. Keep each size quantity at or above its reserved quantity." }, { status: 409 });
-      }
-      if (sizeStockError?.message.includes("PRODUCT_NOT_FOUND")) return NextResponse.json({ error: "Product not found." }, { status: 404 });
-      if (sizeStockError) return NextResponse.json({ error: "Unable to safely update shoe size inventory." }, { status: 500 });
-      delete updatePayload.size_stock;
-      delete updatePayload.sizes;
-      delete updatePayload.unavailable_sizes;
-      delete updatePayload.stock;
     }
     if (body.sku !== undefined) {
       if (body.sku !== null && typeof body.sku !== "string") {

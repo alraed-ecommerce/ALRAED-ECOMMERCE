@@ -2294,16 +2294,14 @@ textarea { transition-duration: .2s; }
 .admin-dashboard .admin-size-label { color: #172b45; font-size: 13px; font-weight: 750; }
 .admin-dashboard .admin-size-status { background: #e8edf3; border-radius: 999px; color: #48576b; font-size: 8px; font-weight: 700; line-height: 1.2; padding: 4px 7px; }
 .admin-dashboard .admin-size-status.is-stocked { background: #dff4e8; color: #17623c; }
-.admin-size-stepper { align-items: center; display: grid; gap: 5px; grid-template-columns: 40px minmax(0, 1fr) 40px; margin-top: 9px; }
-.admin-dashboard .admin-size-stepper-button { align-items: center; background: #fff; border: 1px solid #b8c5d4; border-radius: 9px; color: #173d70; cursor: pointer; display: inline-flex; height: 40px; justify-content: center; padding: 0; touch-action: manipulation; transition: background-color .15s, border-color .15s, color .15s; width: 40px; }
-.admin-dashboard .admin-size-stepper-button:hover:not(:disabled) { background: #e7f1ff; border-color: #4c8cda; color: #063c83; }
-.admin-dashboard .admin-size-stepper-button:disabled { background: #edf0f4; border-color: #e0e5eb; color: #96a1af; cursor: not-allowed; }
+.admin-dashboard .admin-size-quantity-readonly { color: #172b45; display: block; font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1; margin-top: 14px; text-align: center; }
 .admin-dashboard .admin-size-quantity { color: #172b45; font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 800; line-height: 1; text-align: center; }
 .admin-size-stock-footer { align-items: center; border-top: 1px solid #e3e9f0; color: #526176; display: flex; font-size: 11px; font-weight: 650; justify-content: space-between; margin-top: 14px; padding-top: 11px; }
 .admin-dashboard .admin-back-to-top { bottom: 70px; height: 36px; min-height: 36px; min-width: 36px; position: fixed; right: 24px; width: 36px; z-index: 71; }
 :root[data-theme="dark"] .admin-dashboard .admin-size-stock { background: #08172a; border-color: #263b56; color: #e7eff9; }
 :root[data-theme="dark"] .admin-dashboard .admin-size-stock-heading h3,
 :root[data-theme="dark"] .admin-dashboard .admin-size-label,
+:root[data-theme="dark"] .admin-dashboard .admin-size-quantity-readonly,
 :root[data-theme="dark"] .admin-dashboard .admin-size-quantity { color: #f1f5fb; }
 :root[data-theme="dark"] .admin-dashboard .admin-size-stock-heading p,
 :root[data-theme="dark"] .admin-size-stock-footer { color: #b0bfd2; }
@@ -2314,16 +2312,11 @@ textarea { transition-duration: .2s; }
 :root[data-theme="dark"] .admin-dashboard .admin-size-stock-card.is-stocked { background: #102744; border-color: #35669b; }
 :root[data-theme="dark"] .admin-dashboard .admin-size-status { background: #253449; color: #d0d9e5; }
 :root[data-theme="dark"] .admin-dashboard .admin-size-status.is-stocked { background: #123b2d; color: #9be2b9; }
-:root[data-theme="dark"] .admin-dashboard .admin-size-stepper-button { background: #142842; border-color: #37516f; color: #d4e6ff; }
-:root[data-theme="dark"] .admin-dashboard .admin-size-stepper-button:hover:not(:disabled) { background: #1e4774 !important; border-color: #6ba8ee; color: #fff !important; }
-:root[data-theme="dark"] .admin-dashboard .admin-size-stepper-button:disabled { background: #1a2637; border-color: #2a3749; color: #8391a3; }
 :root[data-theme="dark"] .admin-size-stock-footer { border-color: #2a405c; }
 @media (max-width: 420px) {
   .admin-dashboard .admin-size-stock { padding: 12px; }
   .admin-size-stock-grid { gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-dashboard .admin-size-stock-card { padding: 9px; }
-  .admin-size-stepper { gap: 4px; grid-template-columns: 38px minmax(0, 1fr) 38px; }
-  .admin-dashboard .admin-size-stepper-button { height: 38px; width: 38px; }
   .admin-dashboard .admin-back-to-top { bottom: 58px; height: 32px; min-height: 32px; min-width: 32px; right: 16px; width: 32px; }
 }
 :root[data-theme="dark"] .admin-dashboard .border-slate-800,

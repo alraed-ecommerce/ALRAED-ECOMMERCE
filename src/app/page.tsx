@@ -282,7 +282,7 @@ function ProductTile({
         <div className="ar-product-kicker"><span>{product.brand || "AL RAED"}</span>{product.rating > 0 && <span>★ {product.rating.toFixed(1)}</span>}</div>
         <h3><button className="ar-product-title-button" type="button" onClick={() => onView(product)}>{product.name}</button></h3>
         <button className="ar-product-details-link" type="button" onClick={() => onView(product)}>VIEW DETAILS <ArrowUpRight size={12} /></button>
-        <div className="ar-product-bottom"><strong>{money(product.price)}</strong>{product.stockStatus === "unavailable" ? <small>Stock temporarily unavailable</small> : product.stock > 0 && <small>{product.stock <= product.lowStockThreshold ? `Only ${product.stock} left` : "In stock"}</small>}</div>
+        <div className="ar-product-bottom"><strong>{money(product.price)}</strong>{product.stockStatus === "unavailable" ? <small>Stock temporarily unavailable</small> : product.stock > 0 && <small>{product.stock <= product.lowStockThreshold ? "Low stock" : "In stock"}</small>}</div>
       </div>
     </article>
   );
@@ -706,7 +706,7 @@ export default function Home() {
           <article className="ar-mega-product" key={product.id}>
             <button className="ar-mega-product-image" type="button" onClick={() => viewProduct(product)} aria-label={`View details for ${product.name}`}>
               {product.image ? <img src={product.image} alt={product.name} /> : <span>AL RAED</span>}
-              <span className={`ar-mega-stock ${product.stock > 0 ? "is-available" : ""}`}>{product.stock > 0 ? (product.stock < 4 ? `ONLY ${product.stock} LEFT` : "IN STOCK") : "SOLD OUT"}</span>
+              <span className={`ar-mega-stock ${product.stock > 0 ? "is-available" : ""}`}>{product.stock > 0 ? (product.stock < 4 ? "LOW STOCK" : "IN STOCK") : "SOLD OUT"}</span>
             </button>
             <small>{product.brand || "AL RAED SPORTS"}</small>
             <strong>{product.name}</strong>

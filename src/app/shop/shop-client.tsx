@@ -106,7 +106,7 @@ function ShopProductCard({
         </button>
         {product.stockStatus === "unavailable"
           ? <span className="ar-shop-stock-badge">STOCK UNAVAILABLE</span>
-          : product.stock > 0 && product.stock <= product.lowStockThreshold && <span className="ar-shop-stock-badge">ONLY {product.stock} LEFT</span>}
+          : product.stock > 0 && product.stock <= product.lowStockThreshold && <span className="ar-shop-stock-badge">LOW STOCK</span>}
         <button className={`ar-shop-wishlist ${liked ? "is-liked" : ""}`} type="button" onClick={() => onLike(product.id)} aria-label={`${liked ? "Remove" : "Add"} ${product.name} ${liked ? "from" : "to"} wishlist`}>
           <Heart size={17} fill={liked ? "currentColor" : "none"} />
         </button>
