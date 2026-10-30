@@ -21,11 +21,11 @@ export async function GET(request: Request) {
 
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, order_items(id, product_id, product_name, quantity, unit_price)")
+      .select("id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, zoho_invoice_recorded_at, order_items(id, product_id, product_name, quantity, unit_price)")
       .order("created_at", { ascending: false });
 
     if (error?.code === "42703") {
-      return NextResponse.json({ error: "Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql in Supabase to enable payment details." }, { status: 503 });
+      return NextResponse.json({ error: "Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql and SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql in Supabase to enable order and stock details." }, { status: 503 });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ orders: orders ?? [] });
@@ -41,8 +41,41 @@ export async function PATCH(request: Request) {
     const supabase = createAdminSupabase();
     if (!supabase) return NextResponse.json({ error: "Order storage is not configured." }, { status: 500 });
 
-    const body = await request.json() as { id?: string; status?: string; notes?: string | null };
+    const body = await request.json() as { id?: string; status?: string; notes?: string | null; recordZohoInvoice?: boolean };
     if (!body.id) return NextResponse.json({ error: "Order id is required." }, { status: 400 });
+
+    if (body.recordZohoInvoice === true) {
+      const { data: currentOrder, error: currentOrderError } = await supabase
+        .from("orders")
+        .select("status, zoho_invoice_recorded_at")
+        .eq("id", body.id)
+        .single();
+      if (currentOrderError) {
+        if (currentOrderError.code === "42703") {
+          return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql in Supabase first." }, { status: 503 });
+        }
+        return NextResponse.json({ error: "Unable to verify the order before recording its Zoho invoice." }, { status: 500 });
+      }
+      if (currentOrder.zoho_invoice_recorded_at) {
+        return NextResponse.json({ order: { id: body.id, zoho_invoice_recorded_at: currentOrder.zoho_invoice_recorded_at } });
+      }
+      if (!["paid", "processing", "shipped", "delivered"].includes(currentOrder.status)) {
+        return NextResponse.json({ error: "Only paid orders can be recorded as invoiced in Zoho." }, { status: 409 });
+      }
+      const { data: updatedOrder, error: updateError } = await supabase
+        .from("orders")
+        .update({ zoho_invoice_recorded_at: new Date().toISOString() })
+        .eq("id", body.id)
+        .is("zoho_invoice_recorded_at", null)
+        .in("status", ["paid", "processing", "shipped", "delivered"])
+        .select("id, zoho_invoice_recorded_at")
+        .single();
+      if (updateError) {
+        console.error("Unable to record the manually created Zoho invoice.", updateError.message);
+        return NextResponse.json({ error: "Unable to record the Zoho invoice. Refresh the orders list and try again." }, { status: 500 });
+      }
+      return NextResponse.json({ order: updatedOrder });
+    }
 
     const allowedStatuses = ["awaiting_payment", "paid", "processing", "shipped", "delivered", "cancelled"];
     if (body.status && !allowedStatuses.includes(body.status)) {
@@ -88,7 +121,7 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const orderSelection = "id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, order_items(id, product_id, product_name, quantity, unit_price)";
+    const orderSelection = "id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, zoho_invoice_recorded_at, order_items(id, product_id, product_name, quantity, unit_price)";
     const orderQuery = body.status === "paid"
       ? supabase.from("orders").select(orderSelection).eq("id", body.id)
       : supabase.from("orders").update({

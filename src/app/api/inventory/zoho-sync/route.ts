@@ -31,30 +31,39 @@ const syncInventory = async (request: Request) => {
 
   const { data: products, error: productsError } = await supabase
     .from("products")
-    .select("sku")
-    .not("sku", "is", null)
-    .neq("sku", "");
+    .select("id, sku, zoho_product_id, product_type");
 
   if (productsError) {
     console.error("Zoho stock sync could not load website SKUs:", productsError.message);
     return NextResponse.json({ error: "Unable to load website product SKUs." }, { status: 500 });
   }
 
-  const websiteSkus = Array.from(new Set(
-    (products ?? [])
-      .map((product) => product.sku)
-      .filter((sku): sku is string => typeof sku === "string" && Boolean(sku.trim()))
-      .map(normalizeZohoSku),
-  ));
+  const allWebsiteProducts = (products ?? [])
+    .filter((product) => product.product_type !== "shoe")
+    .map((product) => ({
+      id: Number(product.id),
+      sku: typeof product.sku === "string" && product.sku.trim() ? normalizeZohoSku(product.sku) : null,
+      zoho_product_id: typeof product.zoho_product_id === "string" && product.zoho_product_id.trim() ? product.zoho_product_id.trim() : null,
+    }));
+  const websiteProducts = allWebsiteProducts.filter((product) => product.sku || product.zoho_product_id);
 
   try {
-    const updates = await getZohoStockUpdates(websiteSkus);
+    const updates = await getZohoStockUpdates(websiteProducts);
     let updatedProductCount = 0;
 
     if (updates.length > 0) {
       const { data, error } = await supabase.rpc("sync_zoho_product_stock", { p_updates: updates });
       if (error) {
         console.error("Zoho stock sync database update failed:", error.message);
+        if (error.code === "42703" || error.code === "PGRST202") {
+          return NextResponse.json({ error: "Apply SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql in Supabase before syncing stock." }, { status: 503 });
+        }
+        if (error.message.includes("ZOHO_STOCK_BELOW_UNRECORDED_PAID_SALES:")) {
+          return NextResponse.json({ error: "Zoho stock is below paid website sales not yet recorded as invoiced. If those sales are already invoiced in Zoho, record the invoice in Admin and retry; otherwise verify the stock before syncing." }, { status: 409 });
+        }
+        if (error.message.includes("ZOHO_STOCK_BELOW_ACTIVE_CHECKOUT_RESERVATIONS:")) {
+          return NextResponse.json({ error: "Zoho stock is below active checkout reservations. Wait for those checkouts to finish or expire, then retry." }, { status: 409 });
+        }
         return NextResponse.json({ error: "Zoho stock was retrieved but could not be saved." }, { status: 500 });
       }
       updatedProductCount = Number(data);
@@ -64,11 +73,18 @@ const syncInventory = async (request: Request) => {
       }
     }
 
-    const matchedSkus = new Set(updates.map((update) => update.sku));
+    const matchedZohoIds = new Set(updates.map((update) => update.zoho_product_id));
+    const matchedSkus = new Set(updates.map((update) => update.sku && normalizeZohoSku(update.sku)).filter(Boolean));
+    const unmatchedProducts = allWebsiteProducts.filter((product) => (
+      !(product.sku || product.zoho_product_id)
+      ||
+      !(product.zoho_product_id && matchedZohoIds.has(product.zoho_product_id))
+      && !(product.sku && matchedSkus.has(normalizeZohoSku(product.sku)))
+    ));
     return NextResponse.json({
       success: true,
       updatedProductCount,
-      unmatchedWebsiteSkus: websiteSkus.filter((sku) => !matchedSkus.has(sku)),
+      unmatchedWebsiteSkus: unmatchedProducts.map((product) => product.sku ?? product.zoho_product_id ?? `Product #${product.id}`),
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {

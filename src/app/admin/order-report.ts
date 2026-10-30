@@ -130,17 +130,13 @@ export function createOrderReportWorkbook(orders: OrderReportOrder[]) {
   return workbook;
 }
 
-export async function downloadOrderReport(orders: OrderReportOrder[]) {
+export async function prepareOrderReportDownload(orders: OrderReportOrder[]) {
   const workbook = createOrderReportWorkbook(orders);
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const downloadUrl = URL.createObjectURL(blob);
-  const downloadLink = document.createElement("a");
-  downloadLink.href = downloadUrl;
-  downloadLink.download = `al-raed-orders-${new Date().toISOString().slice(0, 10)}.xlsx`;
-  document.body.append(downloadLink);
-  downloadLink.click();
-  downloadLink.remove();
-  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-  return { orderCount: orders.length };
+  return {
+    href: URL.createObjectURL(blob),
+    fileName: `al-raed-orders-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    orderCount: orders.length,
+  };
 }

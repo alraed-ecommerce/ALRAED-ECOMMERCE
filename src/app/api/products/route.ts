@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/server-auth";
+import { getZohoLowStockThreshold, getZohoStockStatus } from "@/lib/zoho-stock-policy";
 
 export async function GET() {
   const supabase = createAdminSupabase();
@@ -7,14 +8,14 @@ export async function GET() {
 
   const { data: products, error } = await supabase
     .from("products")
-    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, rating, reviews, stock, colors, sizes, unavailable_sizes")
+    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at")
     .eq("is_active", true)
     .in("category", ["Badminton", "Tennis", "Squash", "Accessories"])
     .order("created_at", { ascending: false });
 
   let productRows = products ?? [];
   if (error) {
-    if (error.code !== "42703" || !/product_type|size_category|size_stock/i.test(error.message)) {
+    if (error.code !== "42703" || !/product_type|size_category|size_stock|sku|zoho_product_id|zoho_stock_synced_at/i.test(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -30,6 +31,9 @@ export async function GET() {
       product_type: null,
       size_category: null,
       size_stock: null,
+      sku: null,
+      zoho_product_id: null,
+      zoho_stock_synced_at: null,
     }));
   }
 
@@ -74,6 +78,15 @@ export async function GET() {
   }
   const productsWithAvailableStock = productRows.map((product) => {
     const productId = Number(product.id);
+    const storefrontProduct = { ...product };
+    delete storefrontProduct.sku;
+    delete storefrontProduct.zoho_product_id;
+    delete storefrontProduct.zoho_stock_synced_at;
+    const stockStatus = getZohoStockStatus(product);
+    const inventoryFields = {
+      stock_status: stockStatus,
+      low_stock_threshold: getZohoLowStockThreshold(),
+    };
     const productSizeStock = product.size_stock && typeof product.size_stock === "object" && !Array.isArray(product.size_stock)
       ? product.size_stock as Record<string, number>
       : null;
@@ -86,7 +99,8 @@ export async function GET() {
       ]));
       const sizes = Array.isArray(product.sizes) ? product.sizes : Object.keys(size_stock);
       return {
-        ...product,
+        ...storefrontProduct,
+        ...inventoryFields,
         size_stock,
         sizes,
         unavailable_sizes: sizes.filter((size) => Number(size_stock[size] ?? 0) < 1),
@@ -94,8 +108,11 @@ export async function GET() {
       };
     }
     return {
-      ...product,
-      stock: Math.max(0, Number(product.stock ?? 0) - (reservedByProduct.get(productId) ?? 0)),
+      ...storefrontProduct,
+      ...inventoryFields,
+      stock: stockStatus === "unavailable"
+        ? 0
+        : Math.max(0, Number(product.stock ?? 0) - (reservedByProduct.get(productId) ?? 0)),
     };
   });
 

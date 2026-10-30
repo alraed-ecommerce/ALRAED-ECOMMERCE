@@ -104,18 +104,20 @@ function ShopProductCard({
         <button type="button" className="ar-shop-product-open" onClick={() => onView(product)} aria-label={`View ${product.name} details`}>
           {product.image ? <img src={product.image} alt={product.name} loading="lazy" /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
         </button>
-        {product.stock > 0 && product.stock < 4 && <span className="ar-shop-stock-badge">ONLY {product.stock} LEFT</span>}
+        {product.stockStatus === "unavailable"
+          ? <span className="ar-shop-stock-badge">STOCK UNAVAILABLE</span>
+          : product.stock > 0 && product.stock <= product.lowStockThreshold && <span className="ar-shop-stock-badge">ONLY {product.stock} LEFT</span>}
         <button className={`ar-shop-wishlist ${liked ? "is-liked" : ""}`} type="button" onClick={() => onLike(product.id)} aria-label={`${liked ? "Remove" : "Add"} ${product.name} ${liked ? "from" : "to"} wishlist`}>
           <Heart size={17} fill={liked ? "currentColor" : "none"} />
         </button>
-        <button className="ar-shop-quick-add" type="button" onClick={() => onAdd(product)} disabled={product.stock < 1}>
-          {product.stock < 1 ? "SOLD OUT" : added ? <><Check size={14} /> ADDED TO BAG</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={14} /></> : <>QUICK ADD <Plus size={14} /></>}
+        <button className="ar-shop-quick-add" type="button" onClick={() => onAdd(product)} disabled={product.stock < 1 || product.stockStatus === "unavailable"}>
+          {product.stockStatus === "unavailable" ? "UNAVAILABLE" : product.stock < 1 ? "SOLD OUT" : added ? <><Check size={14} /> ADDED TO BAG</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={14} /></> : <>QUICK ADD <Plus size={14} /></>}
         </button>
       </div>
       <div className="ar-shop-product-copy">
         <div className="ar-shop-product-meta"><span>{product.brand || "AL RAED SPORTS"}</span><span>{getProductType(product)}</span></div>
         <button className="ar-shop-product-title" type="button" onClick={() => onView(product)}>{product.name.replace(/^\[TEST\]\s*/, "")}</button>
-        <div className="ar-shop-product-bottom"><strong>{money(product.price)}</strong><span>{product.stock > 0 ? "IN STOCK" : "SOLD OUT"}</span></div>
+        <div className="ar-shop-product-bottom"><strong>{money(product.price)}</strong><span>{product.stockStatus === "unavailable" ? "STOCK UNAVAILABLE" : product.stock > 0 ? "IN STOCK" : "SOLD OUT"}</span></div>
       </div>
     </article>
   );
@@ -263,7 +265,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
   }, []);
 
   const addToCart = useCallback((product: StoreProduct, quantity = 1, options: { color?: string; size?: string } = {}) => {
-    if (product.stock < 1) return false;
+    if (product.stock < 1 || product.stockStatus === "unavailable") return false;
     if ((product.colors.length > 0 && !options.color)
       || ((product.sizes.length > 0 || isFootwearProduct(product)) && !options.size)) return false;
     let currentCart: CartLine[];

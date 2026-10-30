@@ -11,6 +11,8 @@ export type StoreProduct = {
   rating: number;
   reviews: number;
   stock: number;
+  stockStatus: "manual" | "verified" | "unavailable";
+  lowStockThreshold: number;
   colors: string[];
   sizes: string[];
   unavailableSizes: string[];
@@ -75,6 +77,12 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
     rating: Number(row.rating ?? 0),
     reviews: Number(row.reviews ?? 0),
     stock: productType === "shoe" ? Object.values(sizeStock).reduce((total, quantity) => total + quantity, 0) : Math.max(0, Number(row.stock ?? 0)),
+    stockStatus: row.stock_status === "verified" || row.stock_status === "unavailable"
+      ? row.stock_status
+      : row.stockStatus === "verified" || row.stockStatus === "unavailable" ? row.stockStatus : "manual",
+    lowStockThreshold: Number.isInteger(row.low_stock_threshold ?? row.lowStockThreshold) && Number(row.low_stock_threshold ?? row.lowStockThreshold) >= 0
+      ? Number(row.low_stock_threshold ?? row.lowStockThreshold)
+      : 3,
     colors: productType === "shoe" ? [] : Array.isArray(row.colors) ? row.colors.filter((value): value is string => typeof value === "string") : [],
     sizes: Array.isArray(row.sizes) ? row.sizes.filter((value): value is string => typeof value === "string") : [],
     unavailableSizes: Array.isArray(row.unavailable_sizes) ? row.unavailable_sizes.filter((value): value is string => typeof value === "string") : [],

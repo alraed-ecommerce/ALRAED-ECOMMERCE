@@ -1,0 +1,149 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const originalFetch = globalThis.fetch;
+const originalEnv = new Map([
+  ["ZOHO_CLIENT_ID", process.env.ZOHO_CLIENT_ID],
+  ["ZOHO_CLIENT_SECRET", process.env.ZOHO_CLIENT_SECRET],
+  ["ZOHO_REFRESH_TOKEN", process.env.ZOHO_REFRESH_TOKEN],
+  ["ZOHO_ORGANIZATION_ID", process.env.ZOHO_ORGANIZATION_ID],
+  ["ZOHO_LOCATION_IDS", process.env.ZOHO_LOCATION_IDS],
+  ["ZOHO_ACCOUNTS_URL", process.env.ZOHO_ACCOUNTS_URL],
+  ["ZOHO_API_URL", process.env.ZOHO_API_URL],
+  ["ZOHO_STOCK_MAX_AGE_SECONDS", process.env.ZOHO_STOCK_MAX_AGE_SECONDS],
+  ["ZOHO_LOW_STOCK_THRESHOLD", process.env.ZOHO_LOW_STOCK_THRESHOLD],
+]);
+
+process.env.ZOHO_CLIENT_ID = "test-client";
+process.env.ZOHO_CLIENT_SECRET = "test-secret";
+process.env.ZOHO_REFRESH_TOKEN = "test-refresh-token";
+process.env.ZOHO_ORGANIZATION_ID = "test-organization";
+process.env.ZOHO_LOCATION_IDS = "location-1";
+process.env.ZOHO_ACCOUNTS_URL = "https://accounts.zoho.com";
+process.env.ZOHO_API_URL = "https://www.zohoapis.com";
+
+const { getZohoStockUpdates, ZohoInventoryError } = await import("../src/lib/zoho-inventory.ts");
+const { getZohoStockStatus, isZohoStockFresh } = await import("../src/lib/zoho-stock-policy.ts");
+
+test.after(() => {
+  globalThis.fetch = originalFetch;
+  for (const [key, value] of originalEnv) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
+
+test("retrieves available quantities only through versioned Zoho GET endpoints", async () => {
+  const requests = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    requests.push({ url, method: init.method ?? "GET" });
+
+    if (url.hostname === "accounts.zoho.com") {
+      return Response.json({ access_token: "mock-access-token", api_domain: "https://www.zohoapis.com" });
+    }
+    if (url.pathname === "/inventory/v1/locations") {
+      return Response.json({ code: 0, locations: [{ location_id: "location-1" }] });
+    }
+    if (url.pathname === "/inventory/v1/items") {
+      return Response.json({
+        code: 0,
+        items: [{ item_id: "item-1", sku: "SKU-1" }],
+        page_context: { has_more_page: false },
+      });
+    }
+    if (url.pathname === "/inventory/v1/items/item-1") {
+      return Response.json({
+        code: 0,
+        item: {
+          item_id: "item-1",
+          sku: "SKU-1",
+          locations: [{ location_id: "location-1", location_available_stock: "7" }],
+        },
+      });
+    }
+    throw new Error(`Unexpected Zoho endpoint: ${url.pathname}`);
+  };
+
+  assert.deepEqual(await getZohoStockUpdates([{ sku: " SKU-1 " }]), [{ sku: "SKU-1", zoho_product_id: "item-1", stock: 7 }]);
+  assert.equal(requests[0].method, "POST");
+  assert.equal(requests[0].url.pathname, "/oauth/v2/token");
+  assert.ok(requests.slice(1).every(({ method, url }) => method === "GET" && url.pathname.startsWith("/inventory/v1/")));
+});
+
+test("does not make any Zoho requests when no website products are mapped", async () => {
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    throw new Error("Unexpected request");
+  };
+
+  assert.deepEqual(await getZohoStockUpdates([{ sku: null }]), []);
+  assert.equal(requestCount, 0);
+});
+
+test("matches by stable Zoho item ID even when the Zoho SKU changes", async () => {
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "accounts.zoho.com") {
+      return Response.json({ access_token: "mock-access-token", api_domain: "https://www.zohoapis.com" });
+    }
+    if (url.pathname === "/inventory/v1/locations") {
+      return Response.json({ code: 0, locations: [{ location_id: "location-1" }] });
+    }
+    if (url.pathname === "/inventory/v1/items") {
+      return Response.json({
+        code: 0,
+        items: [{ item_id: "item-1", sku: "UPDATED-SKU", locations: [{ location_id: "location-1", location_available_stock: 4 }] }],
+        page_context: { has_more_page: false },
+      });
+    }
+    throw new Error(`Unexpected Zoho endpoint: ${url.pathname}`);
+  };
+
+  assert.deepEqual(
+    await getZohoStockUpdates([{ sku: "OLD-SKU", zoho_product_id: "item-1" }]),
+    [{ sku: "OLD-SKU", zoho_product_id: "item-1", stock: 4 }],
+  );
+});
+
+test("fails safely when a configured location has no stock details", async () => {
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "accounts.zoho.com") {
+      return Response.json({ access_token: "mock-access-token", api_domain: "https://www.zohoapis.com" });
+    }
+    if (url.pathname === "/inventory/v1/locations") {
+      return Response.json({ code: 0, locations: [{ location_id: "location-1" }] });
+    }
+    if (url.pathname === "/inventory/v1/items") {
+      return Response.json({
+        code: 0,
+        items: [{ item_id: "item-1", sku: "SKU-1" }],
+        page_context: { has_more_page: false },
+      });
+    }
+    if (url.pathname === "/inventory/v1/items/item-1") {
+      return Response.json({ code: 0, item: { item_id: "item-1", sku: "SKU-1", locations: [] } });
+    }
+    throw new Error(`Unexpected Zoho endpoint: ${url.pathname}`);
+  };
+
+  await assert.rejects(getZohoStockUpdates([{ sku: "SKU-1" }]), ZohoInventoryError);
+});
+
+test("blocks Zoho-managed stock when mappings or sync timestamps are missing or stale", () => {
+  process.env.ZOHO_STOCK_MAX_AGE_SECONDS = "900";
+  const now = Date.parse("2026-01-01T12:00:00.000Z");
+  assert.equal(isZohoStockFresh("2026-01-01T11:50:00.000Z", 900_000, now), true);
+  assert.equal(isZohoStockFresh("2026-01-01T11:40:00.000Z", 900_000, now), false);
+  assert.equal(isZohoStockFresh("2026-01-01T12:01:00.000Z", 900_000, now), false);
+  assert.equal(getZohoStockStatus({ name: "Racquet", product_type: "racquet", sku: null }, now), "unavailable");
+  assert.equal(getZohoStockStatus({
+    name: "Racquet",
+    product_type: "racquet",
+    sku: "R-1",
+    zoho_stock_synced_at: "2026-01-01T11:50:00.000Z",
+  }, now), "verified");
+  assert.equal(getZohoStockStatus({ name: "Shoe", product_type: "shoe" }, now), "manual");
+});

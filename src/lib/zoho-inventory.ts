@@ -1,5 +1,3 @@
-import { get } from "http";
-
 type ZohoApiResponse<T> = {
   code?: number;
   message?: string;
@@ -32,7 +30,8 @@ type ZohoCredentials = {
 };
 
 export type ZohoStockUpdate = {
-  sku: string;
+  sku: string | null;
+  zoho_product_id: string;
   stock: number;
 };
 
@@ -40,8 +39,49 @@ export class ZohoInventoryError extends Error {}
 
 const normalizeSku = (sku: string) => sku.trim().toUpperCase();
 const normalizeUrl = (value: string) => value.replace(/\/+$/, "");
+const inventoryApiPath = "inventory/v1/";
+const requestTimeoutMs = 15_000;
+const maxRequestAttempts = 3;
 const isZohoAccountsHost = (hostname: string) => /^accounts\.zoho\.(com|eu|in|com\.au|jp|ca|sa|com\.cn)$/i.test(hostname);
 const isZohoApiHost = (hostname: string) => /^(www\.)?zohoapis\.(com|eu|in|com\.au|jp|ca|sa|com\.cn)$/i.test(hostname);
+
+const fetchZoho = async (url: URL, init: RequestInit) => {
+  for (let attempt = 0; attempt < maxRequestAttempts; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, signal: AbortSignal.timeout(requestTimeoutMs) });
+    } catch (error) {
+      if (attempt === maxRequestAttempts - 1) {
+        throw new ZohoInventoryError(error instanceof Error && error.name === "TimeoutError"
+          ? "Zoho inventory request timed out."
+          : "Unable to reach Zoho Inventory.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** attempt)));
+      continue;
+    }
+
+    if ((response.status === 429 || response.status >= 500) && attempt < maxRequestAttempts - 1) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 5_000)
+        : 250 * (2 ** attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    return response;
+  }
+
+  throw new ZohoInventoryError("Zoho inventory request failed after multiple attempts.");
+};
+
+const parseZohoResponse = async <T>(response: Response): Promise<T> => {
+  try {
+    return await response.json() as T;
+  } catch {
+    throw new ZohoInventoryError("Zoho returned an invalid response.");
+  }
+};
 
 const getCredentials = (): ZohoCredentials => {
   const clientId = process.env.ZOHO_CLIENT_ID?.trim();
@@ -87,17 +127,17 @@ const getAccessToken = async (credentials: ZohoCredentials) => {
     grant_type: "refresh_token",
   });
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetchZoho(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
     cache: "no-store",
   });
-  const result = await response.json() as {
+  const result = await parseZohoResponse<{
     access_token?: string;
     api_domain?: string;
     error?: string;
-  };
+  }>(response);
 
   if (!response.ok || !result.access_token) {
     throw new ZohoInventoryError(`Zoho OAuth failed${result.error ? ` (${result.error})` : ""}.`);
@@ -124,13 +164,14 @@ const zohoGet = async <T>(
   path: string,
   parameters: Record<string, string>,
 ): Promise<T> => {
-  const url = new URL(path, `${apiUrl}/`);
+  const url = new URL(path.replace(/^\/+/, ""), new URL(inventoryApiPath, `${apiUrl}/`));
   Object.entries(parameters).forEach(([key, value]) => url.searchParams.set(key, value));
-  const response = await fetch(url, {
+  const response = await fetchZoho(url, {
+    method: "GET",
     headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     cache: "no-store",
   });
-  const result = await response.json() as ZohoApiResponse<T>;
+  const result = await parseZohoResponse<ZohoApiResponse<T>>(response);
 
   if (!response.ok || result.code !== 0) {
     throw new ZohoInventoryError(`Zoho inventory API request failed${result.message ? ` (${result.message})` : ""}.`);
@@ -211,33 +252,53 @@ const getItemDetails = async (
 
   return detailedItems;
 };
-export const getZohoStockUpdates = async (websiteSkus: string[]): Promise<ZohoStockUpdate[]> => {
+export const getZohoStockUpdates = async (
+  websiteProducts: Array<{ sku: string | null; zoho_product_id?: string | null }>,
+): Promise<ZohoStockUpdate[]> => {
+  const productsByZohoId = new Map<string, { sku: string | null; zoho_product_id: string }>();
+  const productsBySku = new Map<string, { sku: string | null; zoho_product_id: string }>();
+  for (const product of websiteProducts) {
+    const zohoProductId = product.zoho_product_id?.trim() || "";
+    const sku = product.sku?.trim() || "";
+    if (zohoProductId) productsByZohoId.set(zohoProductId, { sku: sku || null, zoho_product_id: zohoProductId });
+    else if (sku) productsBySku.set(normalizeSku(sku), { sku, zoho_product_id: "" });
+  }
+  if (productsByZohoId.size === 0 && productsBySku.size === 0) return [];
+
   const credentials = getCredentials();
   const { accessToken, apiUrl } = await getAccessToken(credentials);
   await getLocations(credentials, apiUrl, accessToken);
   const items = await getItems(credentials, apiUrl, accessToken);
-  const wantedSkus = new Set(websiteSkus.map(normalizeSku));
-  const matchingItems = new Map<string, ZohoItem>();
+  const matchingItems = new Map<string, { item: ZohoItem; product: { sku: string | null; zoho_product_id: string } }>();
 
   for (const item of items) {
-    if (typeof item.sku !== "string") continue;
-    const sku = normalizeSku(item.sku);
-    if (!wantedSkus.has(sku)) continue;
-    if (matchingItems.has(sku)) {
-      throw new ZohoInventoryError(`Zoho contains more than one item with SKU ${sku}.`);
+    const itemId = item.item_id === undefined || item.item_id === null ? "" : String(item.item_id);
+    const sku = normalizeSku(item.sku ?? "");
+    const product = productsByZohoId.get(itemId) ?? productsBySku.get(sku);
+    if (!product) continue;
+    const key = product.zoho_product_id || `sku:${sku}`;
+    if (matchingItems.has(key)) {
+      throw new ZohoInventoryError(`Zoho contains more than one item matching ${product.zoho_product_id ? `ID ${product.zoho_product_id}` : `SKU ${sku}`}.`);
     }
-    matchingItems.set(sku, item);
+    matchingItems.set(key, { item, product });
   }
 
-  const itemsNeedingDetails = Array.from(matchingItems.values()).filter((item) => !Array.isArray(item.locations));
+  const itemsNeedingDetails = Array.from(matchingItems.values())
+    .map(({ item }) => item)
+    .filter((item) => !Array.isArray(item.locations));
   const detailedItems = await getItemDetails(credentials, apiUrl, accessToken, itemsNeedingDetails);
   detailedItems.forEach((item) => {
-    const sku = normalizeSku(item.sku ?? "");
-    matchingItems.set(sku, item);
+    const itemId = item.item_id === undefined || item.item_id === null ? "" : String(item.item_id);
+    const existing = matchingItems.get(itemId) ?? matchingItems.get(`sku:${normalizeSku(item.sku ?? "")}`);
+    if (existing) matchingItems.set(existing.product.zoho_product_id || `sku:${normalizeSku(item.sku ?? "")}`, { ...existing, item });
   });
 
-  const updates = new Map<string, number>();
-  for (const [sku, item] of matchingItems) {
+  const updates: ZohoStockUpdate[] = [];
+  for (const [key, { item, product }] of matchingItems) {
+    if (item.item_id === undefined || item.item_id === null || !String(item.item_id).trim()) {
+      throw new ZohoInventoryError(`Zoho did not return an item ID for ${product.sku ? `SKU ${product.sku}` : "a mapped item"}.`);
+    }
+    const sku = product.sku ?? item.sku ?? key.replace(/^sku:/, "");
     if (!Array.isArray(item.locations)) {
       throw new ZohoInventoryError(`Zoho did not return warehouse stock details for SKU ${sku}. No stock was changed.`);
     }
@@ -264,10 +325,19 @@ export const getZohoStockUpdates = async (websiteSkus: string[]): Promise<ZohoSt
       availableStock += quantity;
     }
 
-    updates.set(sku, Math.max(0, Math.floor(availableStock)));
+    const missingLocationIds = credentials.locationIds.filter((locationId) => !seenLocationIds.has(locationId));
+    if (missingLocationIds.length > 0) {
+      throw new ZohoInventoryError(`Zoho did not return stock details for every configured location for SKU ${sku}. No stock was changed.`);
+    }
+
+    updates.push({
+      sku: product.sku,
+      zoho_product_id: product.zoho_product_id || String(item.item_id),
+      stock: Math.max(0, Math.floor(availableStock)),
+    });
   }
 
-  return Array.from(updates, ([sku, stock]) => ({ sku, stock }));
+  return updates;
 };
 
 export const normalizeZohoSku = normalizeSku;

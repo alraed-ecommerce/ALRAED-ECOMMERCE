@@ -268,19 +268,21 @@ function ProductTile({
       <div className="ar-product-image">
         {product.image ? <img src={product.image} alt={product.name} loading="lazy" /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
         <button className="ar-product-open" type="button" onClick={() => onView(product)} aria-label={`View details for ${product.name}`} />
-        {product.stock <= 3 && product.stock > 0 && <span className="ar-product-badge">LOW STOCK</span>}
+        {product.stockStatus === "unavailable"
+          ? <span className="ar-product-badge">STOCK UNAVAILABLE</span>
+          : product.stock <= product.lowStockThreshold && product.stock > 0 && <span className="ar-product-badge">LOW STOCK</span>}
         <button className={`ar-wishlist ${liked ? "is-liked" : ""}`} type="button" onClick={() => onLike(product.id)} aria-label={`${liked ? "Remove" : "Add"} ${product.name} ${liked ? "from" : "to"} wishlist`}>
           <Heart size={18} fill={liked ? "currentColor" : "none"} />
         </button>
-        <button className="ar-quick-add" type="button" onClick={() => hasProductOptions(product) ? onView(product) : onAdd(product)} disabled={product.stock <= 0} aria-label={`${hasProductOptions(product) ? "Choose options for" : "Add"} ${product.name} ${hasProductOptions(product) ? "" : "to bag"}`}>
-          {product.stock <= 0 ? "SOLD OUT" : added ? <><Check size={15} /> ADDED</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={15} /></> : <>ADD TO BAG <Plus size={15} /></>}
+        <button className="ar-quick-add" type="button" onClick={() => hasProductOptions(product) ? onView(product) : onAdd(product)} disabled={product.stock <= 0 || product.stockStatus === "unavailable"} aria-label={`${hasProductOptions(product) ? "Choose options for" : "Add"} ${product.name} ${hasProductOptions(product) ? "" : "to bag"}`}>
+          {product.stockStatus === "unavailable" ? "UNAVAILABLE" : product.stock <= 0 ? "SOLD OUT" : added ? <><Check size={15} /> ADDED</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={15} /></> : <>ADD TO BAG <Plus size={15} /></>}
         </button>
       </div>
       <div className="ar-product-copy">
         <div className="ar-product-kicker"><span>{product.brand || "AL RAED"}</span>{product.rating > 0 && <span>★ {product.rating.toFixed(1)}</span>}</div>
         <h3><button className="ar-product-title-button" type="button" onClick={() => onView(product)}>{product.name}</button></h3>
         <button className="ar-product-details-link" type="button" onClick={() => onView(product)}>VIEW DETAILS <ArrowUpRight size={12} /></button>
-        <div className="ar-product-bottom"><strong>{money(product.price)}</strong>{product.stock > 0 && <small>{product.stock < 4 ? `Only ${product.stock} left` : "In stock"}</small>}</div>
+        <div className="ar-product-bottom"><strong>{money(product.price)}</strong>{product.stockStatus === "unavailable" ? <small>Stock temporarily unavailable</small> : product.stock > 0 && <small>{product.stock <= product.lowStockThreshold ? `Only ${product.stock} left` : "In stock"}</small>}</div>
       </div>
     </article>
   );
@@ -605,7 +607,7 @@ export default function Home() {
   const suggestions = query ? products.filter((product) => `${product.name} ${product.brand} ${product.category}`.toLowerCase().includes(query.toLowerCase())).slice(0, 5) : [];
 
   const addToCart = useCallback((product: StoreProduct, requestedQuantity = 1, options: { color?: string; size?: string } = {}) => {
-    if (product.stock < 1) return false;
+    if (product.stock < 1 || product.stockStatus === "unavailable") return false;
     if ((product.colors.length > 0 && !options.color)
       || ((product.sizes.length > 0 || isFootwearProduct(product)) && !options.size)) return false;
     const newLine = { product, quantity: requestedQuantity, ...options };

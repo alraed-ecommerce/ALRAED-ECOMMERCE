@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { getStripe } from "@/lib/stripe";
 import { toFils } from "@/lib/checkout-pricing";
+import { getZohoStockStatus, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type CheckoutOrder = {
   order_id: string;
@@ -107,6 +108,25 @@ export async function POST(request: Request) {
       ? addresses.find((address) => address.id === requestedAddressId)
       : addresses.find((address) => address.is_default);
     if (!shippingAddress) return NextResponse.json({ error: "Choose or save a delivery address in your account before checkout." }, { status: 400 });
+
+    if (isZohoStockSyncEnabled()) {
+      const { data: checkoutProducts, error: checkoutProductsError } = await supabase
+        .from("products")
+        .select("id, name, product_type, sku, zoho_product_id, zoho_stock_synced_at")
+        .in("id", Array.from(quantitiesByProduct.keys()))
+        .eq("is_active", true);
+      if (checkoutProductsError) {
+        console.error("Unable to verify Zoho stock freshness before checkout.", checkoutProductsError.message);
+        return NextResponse.json({ error: "Unable to verify current stock. Please try again shortly." }, { status: 503 });
+      }
+      const checkoutProductsById = new Map((checkoutProducts ?? []).map((product) => [Number(product.id), product]));
+      for (const productId of quantitiesByProduct.keys()) {
+        const product = checkoutProductsById.get(productId);
+        if (!product || getZohoStockStatus(product) === "unavailable") {
+          return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });
+        }
+      }
+    }
 
     const { data, error: orderError } = await supabase.rpc("create_stripe_checkout_order_once", {
       p_checkout_attempt_id: body.checkoutAttemptId,

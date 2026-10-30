@@ -10,6 +10,7 @@
     "test:shop-filters": "node --experimental-strip-types --test scripts/test-shop-filters.mjs",
     "test:checkout-pricing": "node --experimental-strip-types --test scripts/test-checkout-pricing.mjs",
     "test:home-campaigns": "node --experimental-strip-types --test scripts/test-home-campaigns.mjs",
+    "test:zoho-stock-sync": "node --experimental-strip-types --test scripts/test-zoho-stock-sync.mjs",
     "seed:badminton-products": "node scripts/seed-badminton-products.mjs",
     "seed:test-products": "node scripts/seed-test-products.mjs"
   },

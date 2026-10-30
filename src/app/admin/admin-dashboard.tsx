@@ -59,8 +59,89 @@ type Order = {
   stripe_payment_intent_id: string | null;
   stripe_payment_method: string | null;
   stripe_paid_at: string | null;
+  zoho_invoice_recorded_at?: string | null;
   order_items?: Array<{ id: number; product_id?: number | null; product_name: string; quantity: number; unit_price: number }>;
 };
+
+type PreparedOrdersReport = {
+  sourceOrders: Order[];
+  attempt: number;
+  href: string;
+  fileName: string;
+  orderCount: number;
+};
+
+function OrdersExportButton({ orders }: { orders: Order[] }) {
+  const [report, setReport] = useState<PreparedOrdersReport | null>(null);
+  const [reportError, setReportError] = useState<{ sourceOrders: Order[]; attempt: number; message: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let preparedHref: string | null = null;
+
+    void import("./order-report")
+      .then(({ prepareOrderReportDownload }) => prepareOrderReportDownload(orders))
+      .then((preparedReport) => {
+        preparedHref = preparedReport.href;
+        if (cancelled) {
+          URL.revokeObjectURL(preparedReport.href);
+          return;
+        }
+        setReport({ ...preparedReport, sourceOrders: orders, attempt });
+        setReportError(null);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setReportError({
+            sourceOrders: orders,
+            attempt,
+            message: error instanceof Error ? error.message : "The order report could not be generated. Please try again.",
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (preparedHref) URL.revokeObjectURL(preparedHref);
+    };
+  }, [attempt, orders]);
+
+  const currentReport = report?.sourceOrders === orders && report.attempt === attempt ? report : null;
+  const currentError = reportError?.sourceOrders === orders && reportError.attempt === attempt ? reportError.message : null;
+
+  return (
+    <>
+      {currentReport ? (
+        <a
+          href={currentReport.href}
+          download={currentReport.fileName}
+          onClick={() => setNotice(`Order report download started with ${currentReport.orderCount} order${currentReport.orderCount === 1 ? "" : "s"}.`)}
+          className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-400"
+          aria-label="Export all orders as an Excel workbook"
+        >
+          <FileSpreadsheet size={15} aria-hidden="true" />
+          Export all orders
+        </a>
+      ) : (
+        currentError ? (
+          <button type="button" onClick={() => setAttempt((current) => current + 1)} className="inline-flex items-center gap-2 rounded-full border border-rose-400/40 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/10" aria-label="Retry preparing the Orders Excel export">
+            <RefreshCw size={14} aria-hidden="true" />
+            Retry export
+          </button>
+        ) : (
+          <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 opacity-50" aria-label="Export all orders as an Excel workbook" aria-busy="true">
+            <FileSpreadsheet size={15} aria-hidden="true" />
+            Preparing export...
+          </button>
+        )
+      )}
+      {notice && <span className="basis-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200" role="status">{notice}</span>}
+      {currentError && <span className="basis-full rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="alert">{currentError}</span>}
+    </>
+  );
+}
 
 const statusOptions = ["awaiting_payment", "paid", "processing", "shipped", "delivered", "cancelled"];
 const productCategories = ["Badminton", "Tennis", "Squash", "Accessories"];
@@ -177,9 +258,6 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [downloadingOrdersReport, setDownloadingOrdersReport] = useState(false);
-  const [ordersReportError, setOrdersReportError] = useState<string | null>(null);
-  const [ordersReportNotice, setOrdersReportNotice] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
@@ -385,18 +463,25 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     }
   };
 
-  const exportOrdersReport = async () => {
-    setDownloadingOrdersReport(true);
-    setOrdersReportError(null);
-    setOrdersReportNotice(null);
+  const recordZohoInvoice = async (orderId: string) => {
+    if (!user || !window.confirm("Only continue after you have created this order's invoice in Zoho. This action records the invoice date but does not create an invoice. Have you created it?")) return;
+    setBusyOrderId(orderId);
     try {
-      const { downloadOrderReport } = await import("./order-report");
-      const { orderCount } = await downloadOrderReport(orders);
-      setOrdersReportNotice(`Order report downloaded with ${orderCount} order${orderCount === 1 ? "" : "s"}.`);
+      const token = await user.getIdToken();
+      const response = await fetch("/api/admin/orders", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, recordZohoInvoice: true }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to record the Zoho invoice.");
+      setOrders((current) => current.map((order) => order.id === orderId
+        ? { ...order, zoho_invoice_recorded_at: result.order.zoho_invoice_recorded_at }
+        : order));
     } catch (error) {
-      setOrdersReportError(error instanceof Error ? error.message : "The order report could not be generated. Please try again.");
+      setAuthError(error instanceof Error ? error.message : "Unable to record the Zoho invoice.");
     } finally {
-      setDownloadingOrdersReport(false);
+      setBusyOrderId(null);
     }
   };
 
@@ -672,15 +757,11 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">{visibleOrders.length} of {orders.length}</span>
-              <button type="button" onClick={() => void exportOrdersReport()} disabled={downloadingOrdersReport || orders.length === 0} className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Export all orders as an Excel workbook">
-                <FileSpreadsheet size={15} aria-hidden="true" />
-                {downloadingOrdersReport ? "Preparing export..." : "Export all orders"}
-              </button>
+              {orders.length > 0
+                ? <OrdersExportButton orders={orders} />
+                : <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 opacity-50" aria-label="Export all orders as an Excel workbook"><FileSpreadsheet size={15} aria-hidden="true" />No orders to export</button>}
             </div>
           </div>
-
-          {ordersReportNotice && <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200" role="status">{ordersReportNotice}</div>}
-          {ordersReportError && <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="alert">{ordersReportError}</div>}
 
           <div className="mb-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(170px,220px)_minmax(170px,220px)]">
             <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
@@ -740,6 +821,24 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                     <strong>Payment confirmed{order.stripe_payment_method ? ` · ${order.stripe_payment_method}` : ""}</strong>
                     {order.stripe_paid_at && <span className="text-xs text-emerald-200/70">Paid {new Date(order.stripe_paid_at).toLocaleString()}</span>}
                     {order.stripe_payment_intent_id && <span className="break-all text-xs text-emerald-200/70">Stripe reference: {order.stripe_payment_intent_id}</span>}
+                  </div>
+                )}
+
+                {(order.status === "paid" || order.status === "processing" || order.status === "shipped" || order.status === "delivered") && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-900/60 bg-sky-950/20 p-3 text-sm text-sky-100">
+                    <span>{order.zoho_invoice_recorded_at
+                      ? `Zoho invoice recorded ${new Date(order.zoho_invoice_recorded_at).toLocaleString()}`
+                      : "After creating this order’s invoice manually in Zoho, record it here to prevent stock being deducted twice."}</span>
+                    {!order.zoho_invoice_recorded_at && (
+                      <button
+                        type="button"
+                        onClick={() => void recordZohoInvoice(order.id)}
+                        disabled={busyOrderId === order.id}
+                        className="rounded-lg border border-sky-700 px-3 py-2 font-semibold text-sky-100 transition hover:bg-sky-900/60 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {busyOrderId === order.id ? "Recording…" : "Record Zoho invoice"}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -833,7 +932,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                   <FileSpreadsheet size={15} aria-hidden="true" />
                   {downloadingStockReport ? "Preparing report..." : "Download stock report"}
                 </button>
-                <button hidden type="button" onClick={() => void syncZohoInventory()} disabled={syncingInventory} className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-400/10 disabled:opacity-50">
+                <button type="button" onClick={() => void syncZohoInventory()} disabled={syncingInventory} className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-400/10 disabled:opacity-50">
                   <RefreshCw size={14} className={syncingInventory ? "animate-spin" : ""} />
                   {syncingInventory ? "Syncing Zoho..." : "Sync Zoho stock"}
                 </button>
@@ -917,13 +1016,13 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                         <input value={editingZohoProductId} onChange={(event) => setEditingZohoProductId(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Zoho product ID (admin only)" />
                       </label>
                       {editingProductType !== "shoe" && <div className="grid gap-2 text-xs font-semibold text-slate-400">
-                        <label htmlFor={`stock-${product.id}`}>Stock quantity{product.sku ? " (managed by Zoho)" : ""}</label>
+                        <label htmlFor={`stock-${product.id}`}>Stock quantity{product.sku || product.zoho_product_id ? " (managed by Zoho)" : ""}</label>
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => setEditingProductStock((stock) => String(Math.max(0, Number(stock || 0) - 1)))} disabled={Boolean(product.sku) || Number(editingProductStock) <= 0} aria-label="Decrease stock by one" className="h-10 w-10 rounded-lg border border-slate-700 bg-slate-900 text-lg text-white disabled:opacity-40">-</button>
-                          <input id={`stock-${product.id}`} value={editingProductStock} onChange={(event) => setEditingProductStock(event.target.value)} type="number" min="0" step="1" disabled={Boolean(product.sku)} className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-center text-sm text-white outline-none focus:border-sky-400 disabled:opacity-60" />
-                          <button type="button" onClick={() => setEditingProductStock((stock) => String(Number(stock || 0) + 1))} disabled={Boolean(product.sku)} aria-label="Increase stock by one" className="h-10 w-10 rounded-lg border border-slate-700 bg-slate-900 text-lg text-white disabled:opacity-40">+</button>
+                          <button type="button" onClick={() => setEditingProductStock((stock) => String(Math.max(0, Number(stock || 0) - 1)))} disabled={Boolean(product.sku || product.zoho_product_id) || Number(editingProductStock) <= 0} aria-label="Decrease stock by one" className="h-10 w-10 rounded-lg border border-slate-700 bg-slate-900 text-lg text-white disabled:opacity-40">-</button>
+                          <input id={`stock-${product.id}`} value={editingProductStock} onChange={(event) => setEditingProductStock(event.target.value)} type="number" min="0" step="1" disabled={Boolean(product.sku || product.zoho_product_id)} className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-center text-sm text-white outline-none focus:border-sky-400 disabled:opacity-60" />
+                          <button type="button" onClick={() => setEditingProductStock((stock) => String(Number(stock || 0) + 1))} disabled={Boolean(product.sku || product.zoho_product_id)} aria-label="Increase stock by one" className="h-10 w-10 rounded-lg border border-slate-700 bg-slate-900 text-lg text-white disabled:opacity-40">+</button>
                         </div>
-                        {product.sku && <p className="text-[11px] font-normal text-slate-500">Stock updates from Zoho when the scheduled sync runs.</p>}
+                        {(product.sku || product.zoho_product_id) && <p className="text-[11px] font-normal text-slate-500">Stock updates from Zoho during stock sync.</p>}
                       </div>}
                       <div className="flex flex-wrap gap-2 sm:col-span-2">
                         <button type="button" onClick={() => void saveProductEditor(product)} disabled={savingEditedProductId === product.id} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-60"><Save size={15} /> Save changes</button>

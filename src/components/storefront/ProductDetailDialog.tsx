@@ -131,7 +131,7 @@ export default function ProductDetailDialog({
             <p className="ar-product-detail-description">{details.description}</p>
             <div className="ar-product-detail-price">
               <strong>{money(product.price)}</strong>
-              <span className={product.stock > 0 ? "is-in-stock" : "is-out-of-stock"}>{product.stock > 0 ? `${product.stock} IN STOCK` : "CURRENTLY UNAVAILABLE"}</span>
+              <span className={product.stock > 0 && product.stockStatus !== "unavailable" ? "is-in-stock" : "is-out-of-stock"}>{product.stockStatus === "unavailable" ? "STOCK TEMPORARILY UNAVAILABLE" : product.stock > 0 ? `${product.stock} IN STOCK` : "CURRENTLY UNAVAILABLE"}</span>
             </div>
             {(product.colors.length > 0 || product.sizes.length > 0 || needsSize) && (
               <div className="ar-product-variants">
@@ -179,8 +179,8 @@ export default function ProductDetailDialog({
                 <span aria-live="polite">{quantity}</span>
                 <button type="button" aria-label="Increase quantity" onClick={() => changeQuantity((value) => Math.min(Math.min(selectedStock, 50), value + 1))} disabled={quantity >= Math.min(selectedStock, 50)}><Plus size={15} /></button>
               </div>
-              <button className="ar-button ar-button-light ar-product-detail-add" type="button" onClick={() => onAdd(product, quantity, { color: needsSize ? undefined : selectedColor || undefined, size: selectedSize || undefined })} disabled={selectedStock < 1 || quantity > selectedStock || hasMissingOptions}>
-                {product.stock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
+              <button className="ar-button ar-button-light ar-product-detail-add" type="button" onClick={() => onAdd(product, quantity, { color: needsSize ? undefined : selectedColor || undefined, size: selectedSize || undefined })} disabled={selectedStock < 1 || quantity > selectedStock || hasMissingOptions || product.stockStatus === "unavailable"}>
+                {product.stockStatus === "unavailable" ? "UNAVAILABLE" : product.stock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
               </button>
             </div>
             <p className="ar-product-detail-footnote">UAE-wide delivery · Availability shown from current stock</p>

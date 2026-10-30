@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { parseCheckoutCart } from "@/lib/checkout-cart";
 import { calculateCheckoutTotals, toFils, validateCouponEligibility, type CouponForValidation } from "@/lib/checkout-pricing";
+import { getZohoStockStatus, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type ProductRow = {
   id: number;
@@ -47,6 +48,23 @@ export async function POST(request: Request) {
     }
 
     const productsById = new Map((productRows ?? []).map((product) => [Number(product.id), product as ProductRow]));
+    let zohoStatusByProductId = new Map<number, string>();
+    if (isZohoStockSyncEnabled()) {
+      const { data: stockMappings, error: stockMappingsError } = await supabase
+        .from("products")
+        .select("id, product_type, name, sku, zoho_product_id, zoho_stock_synced_at")
+        .in("id", ids)
+        .eq("is_active", true);
+      if (stockMappingsError) {
+        console.error("Unable to verify Zoho stock freshness for checkout quote.", stockMappingsError.message);
+        return NextResponse.json({ error: "Unable to verify current stock. Please try again shortly." }, { status: 503 });
+      }
+      zohoStatusByProductId = new Map((stockMappings ?? []).map((product) => [
+        Number(product.id),
+        getZohoStockStatus(product),
+      ]));
+    }
+
     const items = [];
     let subtotalFils = 0;
     for (const cartItem of parsedCart.items) {
@@ -57,6 +75,10 @@ export async function POST(request: Request) {
       const colors = product.colors ?? [];
       const sizes = product.sizes ?? [];
       const isShoe = product.product_type === "shoe" || /shoe|sneaker/i.test(product.name);
+      if (isZohoStockSyncEnabled() && zohoStatusByProductId.get(cartItem.productId) !== "manual"
+        && zohoStatusByProductId.get(cartItem.productId) !== "verified") {
+        return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });
+      }
       if ((colors.length > 0 && !cartItem.color)
         || ((sizes.length > 0 || isShoe) && !cartItem.size)
         || (cartItem.color && !colors.includes(cartItem.color))
