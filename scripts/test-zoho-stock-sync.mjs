@@ -143,17 +143,27 @@ test("syncs each shoe size from its own Zoho SKU and preserves size mapping", as
   );
 });
 
-test("syncs Zoho warehouse inventory by matching configured location names", async () => {
+test("syncs all warehouses assigned to configured Zoho locations by warehouse ID", async () => {
+  const previousLocationIds = process.env.ZOHO_LOCATION_IDS;
+  process.env.ZOHO_LOCATION_IDS = "location-1,location-2,location-3";
   const items = [
     { item_id: "shoe-item-7", sku: "SHOE-UK7", warehouses: [
-      { warehouse_id: "warehouse-madinat", warehouse_name: "MADINAT ZAYED", warehouse_available_stock: 2 },
-      { warehouse_id: "warehouse-other", warehouse_name: "OTHER WAREHOUSE", warehouse_available_stock: 9 },
+      { warehouse_id: "warehouse-madinat", warehouse_available_stock: 2 },
+      { warehouse_id: "warehouse-office", warehouse_available_stock: 1 },
+      { warehouse_id: "warehouse-racket", warehouse_available_stock: 0 },
+      { warehouse_id: "warehouse-internal", warehouse_available_stock: 3 },
     ] },
     { item_id: "shoe-item-8", sku: "SHOE-UK8", warehouses: [
-      { warehouse_id: "warehouse-madinat", warehouse_name: "MADINAT ZAYED", warehouse_available_stock: 1 },
+      { warehouse_id: "warehouse-madinat", warehouse_available_stock: 1 },
+      { warehouse_id: "warehouse-office", warehouse_available_stock: 0 },
+      { warehouse_id: "warehouse-racket", warehouse_available_stock: 2 },
+      { warehouse_id: "warehouse-internal", warehouse_available_stock: 0 },
     ] },
     { item_id: "shoe-item-9", sku: "SHOE-UK9", warehouses: [
-      { warehouse_id: "warehouse-madinat", warehouse_name: "MADINAT ZAYED", warehouse_available_stock: 1 },
+      { warehouse_id: "warehouse-madinat", warehouse_available_stock: 1 },
+      { warehouse_id: "warehouse-office", warehouse_available_stock: 2 },
+      { warehouse_id: "warehouse-racket", warehouse_available_stock: 0 },
+      { warehouse_id: "warehouse-internal", warehouse_available_stock: 1 },
     ] },
   ];
   globalThis.fetch = async (input) => {
@@ -162,7 +172,17 @@ test("syncs Zoho warehouse inventory by matching configured location names", asy
       return Response.json({ access_token: "mock-access-token", api_domain: "https://www.zohoapis.com" });
     }
     if (url.pathname === "/inventory/v1/locations") {
-      return Response.json({ code: 0, locations: [{ location_id: "location-1", location_name: "Madinat Zayed" }] });
+      return Response.json({
+        code: 0,
+        locations: [
+          { location_id: "location-1", warehouses: [{ warehouse_id: "warehouse-madinat", status: "active" }] },
+          { location_id: "location-2", primary_stock_location_id: "warehouse-office", warehouses: [] },
+          { location_id: "location-3", warehouses: [
+            { warehouse_id: "warehouse-racket", status: "active" },
+            { warehouse_id: "warehouse-internal", status: "active" },
+          ] },
+        ],
+      });
     }
     if (url.pathname === "/inventory/v1/items") {
       return Response.json({ code: 0, items, page_context: { has_more_page: false } });
@@ -170,19 +190,24 @@ test("syncs Zoho warehouse inventory by matching configured location names", asy
     throw new Error(`Unexpected Zoho endpoint: ${url.pathname}`);
   };
 
-  assert.deepEqual(
-    await getZohoStockUpdates([{
-      id: 43,
-      product_type: "shoe",
-      sku: null,
-      zoho_size_skus: { "UK 7": "SHOE-UK7", "UK 8": "SHOE-UK8", "UK 9": "SHOE-UK9" },
-    }]),
-    [
-      { sku: "SHOE-UK7", zoho_product_id: "shoe-item-7", stock: 2, product_id: 43, size: "UK 7" },
-      { sku: "SHOE-UK8", zoho_product_id: "shoe-item-8", stock: 1, product_id: 43, size: "UK 8" },
-      { sku: "SHOE-UK9", zoho_product_id: "shoe-item-9", stock: 1, product_id: 43, size: "UK 9" },
-    ],
-  );
+  try {
+    assert.deepEqual(
+      await getZohoStockUpdates([{
+        id: 43,
+        product_type: "shoe",
+        sku: null,
+        zoho_size_skus: { "UK 7": "SHOE-UK7", "UK 8": "SHOE-UK8", "UK 9": "SHOE-UK9" },
+      }]),
+      [
+        { sku: "SHOE-UK7", zoho_product_id: "shoe-item-7", stock: 6, product_id: 43, size: "UK 7" },
+        { sku: "SHOE-UK8", zoho_product_id: "shoe-item-8", stock: 3, product_id: 43, size: "UK 8" },
+        { sku: "SHOE-UK9", zoho_product_id: "shoe-item-9", stock: 4, product_id: 43, size: "UK 9" },
+      ],
+    );
+  } finally {
+    if (previousLocationIds === undefined) delete process.env.ZOHO_LOCATION_IDS;
+    else process.env.ZOHO_LOCATION_IDS = previousLocationIds;
+  }
 });
 
 test("fails safely when a configured location has no stock details", async () => {

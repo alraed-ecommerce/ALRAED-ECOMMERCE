@@ -6,6 +6,11 @@ type ZohoApiResponse<T> = {
 type ZohoLocation = {
   location_id?: string | number;
   location_name?: string;
+  primary_stock_location_id?: string | number;
+  warehouses?: Array<{
+    warehouse_id?: string | number;
+    status?: string;
+  }>;
   is_active?: boolean;
 };
 
@@ -16,7 +21,6 @@ type ZohoItemLocation = {
 
 type ZohoItemWarehouse = {
   warehouse_id?: string | number;
-  warehouse_name?: string;
   warehouse_available_stock?: number | string;
 };
 
@@ -48,7 +52,6 @@ export type ZohoStockUpdate = {
 export class ZohoInventoryError extends Error {}
 
 const normalizeSku = (sku: string) => sku.trim().toUpperCase();
-const normalizeLocationName = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleUpperCase();
 const normalizeUrl = (value: string) => value.replace(/\/+$/, "");
 const inventoryApiPath = "inventory/v1/";
 const requestTimeoutMs = 15_000;
@@ -207,6 +210,40 @@ const getLocations = async (credentials: ZohoCredentials, apiUrl: string, access
   return locationsById;
 };
 
+const getConfiguredWarehouseIds = (
+  credentials: ZohoCredentials,
+  locationsById: Map<string, ZohoLocation>,
+) => {
+  const configuredLocations = credentials.locationIds.map((locationId) => locationsById.get(locationId));
+  const hasWarehouseMetadata = configuredLocations.some((location) => (
+    location?.primary_stock_location_id !== undefined
+    || Array.isArray(location?.warehouses)
+  ));
+  if (!hasWarehouseMetadata) return credentials.locationIds;
+
+  const warehouseIds = new Set<string>();
+  for (const locationId of credentials.locationIds) {
+    const location = locationsById.get(locationId);
+    const activeWarehouses = (location?.warehouses ?? [])
+      .filter((warehouse) => warehouse.status?.toLocaleLowerCase() !== "inactive")
+      .map((warehouse) => warehouse.warehouse_id)
+      .filter((warehouseId): warehouseId is string | number => warehouseId !== undefined && warehouseId !== null)
+      .map(String);
+    if (activeWarehouses.length > 0) {
+      activeWarehouses.forEach((warehouseId) => warehouseIds.add(warehouseId));
+      continue;
+    }
+
+    const primaryWarehouseId = location?.primary_stock_location_id;
+    if (primaryWarehouseId !== undefined && primaryWarehouseId !== null) {
+      warehouseIds.add(String(primaryWarehouseId));
+      continue;
+    }
+    throw new ZohoInventoryError(`Zoho did not return warehouse mappings for configured location ${locationId}.`);
+  }
+  return [...warehouseIds];
+};
+
 const getItems = async (credentials: ZohoCredentials, apiUrl: string, accessToken: string) => {
   const items: ZohoItem[] = [];
   let page = 1;
@@ -324,6 +361,7 @@ export const getZohoStockUpdates = async (
   const credentials = getCredentials();
   const { accessToken, apiUrl } = await getAccessToken(credentials);
   const locationsById = await getLocations(credentials, apiUrl, accessToken);
+  const configuredWarehouseIds = getConfiguredWarehouseIds(credentials, locationsById);
   const items = await getItems(credentials, apiUrl, accessToken);
   const matchingItems = new Map<string, {
     item: ZohoItem;
@@ -362,35 +400,24 @@ export const getZohoStockUpdates = async (
       throw new ZohoInventoryError(`Zoho did not return warehouse stock details for SKU ${sku}. No stock was changed.`);
     }
     let availableStock = 0;
-    const stockByLocation = Array.isArray(item.locations)
+    const stockRows = Array.isArray(item.locations)
       ? credentials.locationIds.map((locationId) => ({
-        locationId,
+        id: locationId,
         quantity: item.locations?.find((location) => String(location.location_id ?? "") === locationId)?.location_available_stock,
         matches: item.locations?.filter((location) => String(location.location_id ?? "") === locationId).length ?? 0,
       }))
-      : credentials.locationIds.map((locationId) => {
-        const location = locationsById.get(locationId);
-        const locationName = location?.location_name;
-        if (!locationName?.trim()) {
-          throw new ZohoInventoryError(`Zoho did not return a name for configured location ${locationId}; warehouse stock for SKU ${sku} cannot be matched safely.`);
-        }
-        const matches = (item.warehouses ?? []).filter((warehouse) => (
-          typeof warehouse.warehouse_name === "string"
-          && normalizeLocationName(warehouse.warehouse_name) === normalizeLocationName(locationName)
-        ));
-        return {
-          locationId,
-          quantity: matches[0]?.warehouse_available_stock,
-          matches: matches.length,
-        };
-      });
+      : configuredWarehouseIds.map((warehouseId) => ({
+        id: warehouseId,
+        quantity: item.warehouses?.find((warehouse) => String(warehouse.warehouse_id ?? "") === warehouseId)?.warehouse_available_stock,
+        matches: item.warehouses?.filter((warehouse) => String(warehouse.warehouse_id ?? "") === warehouseId).length ?? 0,
+      }));
 
-    for (const { quantity: quantityValue, matches } of stockByLocation) {
+    for (const { id, quantity: quantityValue, matches } of stockRows) {
       if (matches > 1) {
-        throw new ZohoInventoryError(`Zoho returned duplicate warehouse stock for SKU ${sku}.`);
+        throw new ZohoInventoryError(`Zoho returned duplicate stock details for warehouse ${id} and SKU ${sku}.`);
       }
       if (matches === 0) {
-        throw new ZohoInventoryError(`Zoho did not return stock details for every configured location for SKU ${sku}. No stock was changed.`);
+        throw new ZohoInventoryError(`Zoho did not return stock details for configured location stock ${id} and SKU ${sku}. No stock was changed.`);
       }
       if (
         (typeof quantityValue !== "number" && typeof quantityValue !== "string")
