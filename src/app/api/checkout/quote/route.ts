@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { parseCheckoutCart } from "@/lib/checkout-cart";
 import { calculateCheckoutTotals, toFils, validateCouponEligibility, type CouponForValidation } from "@/lib/checkout-pricing";
-import { getZohoStockStatus, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
+import { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type ProductRow = {
   id: number;
@@ -48,21 +48,29 @@ export async function POST(request: Request) {
     }
 
     const productsById = new Map((productRows ?? []).map((product) => [Number(product.id), product as ProductRow]));
-    let zohoStatusByProductId = new Map<number, string>();
+    let zohoProductsById = new Map<number, {
+      product_type: string | null;
+      name: string;
+      sku: string | null;
+      zoho_product_id: string | null;
+      zoho_stock_synced_at: string | null;
+      zoho_size_skus: Record<string, string> | null;
+      zoho_size_stock_synced_at: Record<string, string> | null;
+    }>();
     if (isZohoStockSyncEnabled()) {
       const { data: stockMappings, error: stockMappingsError } = await supabase
         .from("products")
-        .select("id, product_type, name, sku, zoho_product_id, zoho_stock_synced_at")
+        .select("id, product_type, name, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
         .in("id", ids)
         .eq("is_active", true);
       if (stockMappingsError) {
         console.error("Unable to verify Zoho stock freshness for checkout quote.", stockMappingsError.message);
+        if (stockMappingsError.code === "42703" || stockMappingsError.code === "PGRST204") {
+          return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql before using Zoho-managed stock." }, { status: 503 });
+        }
         return NextResponse.json({ error: "Unable to verify current stock. Please try again shortly." }, { status: 503 });
       }
-      zohoStatusByProductId = new Map((stockMappings ?? []).map((product) => [
-        Number(product.id),
-        getZohoStockStatus(product),
-      ]));
+      zohoProductsById = new Map((stockMappings ?? []).map((product) => [Number(product.id), product]));
     }
 
     const items = [];
@@ -75,8 +83,10 @@ export async function POST(request: Request) {
       const colors = product.colors ?? [];
       const sizes = product.sizes ?? [];
       const isShoe = product.product_type === "shoe" || /shoe|sneaker/i.test(product.name);
-      if (isZohoStockSyncEnabled() && zohoStatusByProductId.get(cartItem.productId) !== "manual"
-        && zohoStatusByProductId.get(cartItem.productId) !== "verified") {
+      const zohoStockProduct = zohoProductsById.get(cartItem.productId);
+      if (isZohoStockSyncEnabled() && (isShoe
+        ? !cartItem.size || !zohoStockProduct || !isZohoSizeStockFresh(zohoStockProduct, cartItem.size)
+        : !zohoStockProduct || getZohoStockStatus(zohoStockProduct) === "unavailable")) {
         return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });
       }
       if ((colors.length > 0 && !cartItem.color)

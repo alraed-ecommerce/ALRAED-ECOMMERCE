@@ -33,6 +33,8 @@ export type ZohoStockUpdate = {
   sku: string | null;
   zoho_product_id: string;
   stock: number;
+  product_id?: number;
+  size?: string;
 };
 
 export class ZohoInventoryError extends Error {}
@@ -253,15 +255,56 @@ const getItemDetails = async (
   return detailedItems;
 };
 export const getZohoStockUpdates = async (
-  websiteProducts: Array<{ sku: string | null; zoho_product_id?: string | null }>,
+  websiteProducts: Array<{
+    id?: number;
+    product_type?: string | null;
+    sku: string | null;
+    zoho_product_id?: string | null;
+    zoho_size_skus?: Record<string, string> | null;
+    zoho_size_item_ids?: Record<string, string> | null;
+  }>,
 ): Promise<ZohoStockUpdate[]> => {
-  const productsByZohoId = new Map<string, { sku: string | null; zoho_product_id: string }>();
-  const productsBySku = new Map<string, { sku: string | null; zoho_product_id: string }>();
+  const productsByZohoId = new Map<string, { sku: string | null; zoho_product_id: string; product_id?: number; size?: string }>();
+  const productsBySku = new Map<string, { sku: string | null; zoho_product_id: string; product_id?: number; size?: string }>();
+  const addSkuMapping = (sku: string, mapping: { sku: string | null; zoho_product_id: string; product_id?: number; size?: string }) => {
+    const key = normalizeSku(sku);
+    if (productsBySku.has(key)) {
+      throw new ZohoInventoryError(`Website products contain duplicate Zoho SKU mapping ${key}.`);
+    }
+    productsBySku.set(key, mapping);
+  };
+  const addZohoIdMapping = (zohoProductId: string, mapping: { sku: string | null; zoho_product_id: string; product_id?: number; size?: string }) => {
+    if (productsByZohoId.has(zohoProductId)) {
+      throw new ZohoInventoryError(`Website products contain duplicate Zoho item ID mapping ${zohoProductId}.`);
+    }
+    productsByZohoId.set(zohoProductId, mapping);
+  };
   for (const product of websiteProducts) {
-    const zohoProductId = product.zoho_product_id?.trim() || "";
-    const sku = product.sku?.trim() || "";
-    if (zohoProductId) productsByZohoId.set(zohoProductId, { sku: sku || null, zoho_product_id: zohoProductId });
-    else if (sku) productsBySku.set(normalizeSku(sku), { sku, zoho_product_id: "" });
+    const zohoProductId = product.product_type === "shoe" ? "" : product.zoho_product_id?.trim() || "";
+    const sku = product.product_type === "shoe" ? "" : product.sku?.trim() || "";
+    const sizeSkus = product.zoho_size_skus ?? {};
+    const sizeItemIds = product.zoho_size_item_ids ?? {};
+    for (const [size, sizeSku] of Object.entries(sizeSkus)) {
+      if (sizeSku.trim()) {
+        const mapping = {
+          sku: sizeSku.trim(),
+          zoho_product_id: "",
+          ...(product.id !== undefined ? { product_id: product.id } : {}),
+          size,
+        };
+        const zohoItemId = sizeItemIds[size]?.trim();
+        if (zohoItemId) addZohoIdMapping(zohoItemId, mapping);
+        addSkuMapping(sizeSku, mapping);
+      }
+    }
+    if (zohoProductId) addZohoIdMapping(zohoProductId, {
+      sku: sku || null,
+      zoho_product_id: zohoProductId,
+      ...(product.id !== undefined ? { product_id: product.id } : {}),
+    });
+    else if (sku && product.product_type !== "shoe" && Object.keys(sizeSkus).length === 0) {
+      addSkuMapping(sku, { sku, zoho_product_id: "", ...(product.id !== undefined ? { product_id: product.id } : {}) });
+    }
   }
   if (productsByZohoId.size === 0 && productsBySku.size === 0) return [];
 
@@ -269,7 +312,10 @@ export const getZohoStockUpdates = async (
   const { accessToken, apiUrl } = await getAccessToken(credentials);
   await getLocations(credentials, apiUrl, accessToken);
   const items = await getItems(credentials, apiUrl, accessToken);
-  const matchingItems = new Map<string, { item: ZohoItem; product: { sku: string | null; zoho_product_id: string } }>();
+  const matchingItems = new Map<string, {
+    item: ZohoItem;
+    product: { sku: string | null; zoho_product_id: string; product_id?: number; size?: string };
+  }>();
 
   for (const item of items) {
     const itemId = item.item_id === undefined || item.item_id === null ? "" : String(item.item_id);
@@ -332,8 +378,10 @@ export const getZohoStockUpdates = async (
 
     updates.push({
       sku: product.sku,
-      zoho_product_id: product.zoho_product_id || String(item.item_id),
+      zoho_product_id: String(item.item_id),
       stock: Math.max(0, Math.floor(availableStock)),
+      ...(product.product_id !== undefined ? { product_id: product.product_id } : {}),
+      ...(product.size ? { size: product.size } : {}),
     });
   }
 

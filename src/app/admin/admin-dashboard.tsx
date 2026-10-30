@@ -40,6 +40,8 @@ type Product = {
   sizes?: string[];
   unavailable_sizes?: string[];
   size_stock?: Record<string, number>;
+  zoho_size_skus?: Record<string, string>;
+  zoho_size_stock_synced_at?: Record<string, string>;
   product_type?: ProductType;
   size_category?: SizeCategory | null;
   created_at?: string;
@@ -191,12 +193,18 @@ function ShoeSizeSelector({
   onCategoryChange,
   sizeStock,
   onChangeSizeStock,
+  sizeSkus,
+  sizeSyncedAt,
+  onChangeSizeSku,
   idPrefix,
 }: {
   category: SizeCategory;
   onCategoryChange: (value: SizeCategory) => void;
   sizeStock: Record<string, number>;
   onChangeSizeStock: (size: string, quantity: number) => void;
+  sizeSkus: Record<string, string>;
+  sizeSyncedAt: Record<string, string>;
+  onChangeSizeSku: (size: string, sku: string) => void;
   idPrefix: string;
 }) {
   const audiences: Array<{ value: SizeCategory; label: string }> = [
@@ -209,8 +217,8 @@ function ShoeSizeSelector({
     <div className="admin-size-stock">
       <div className="admin-size-stock-heading">
         <div>
-          <h3>Stock by shoe size</h3>
-          <p>Set the quantity for each size. Zero-stock sizes will be disabled for customers. Add each shoe colorway as a separate product with its own image.</p>
+          <h3>Zoho stock by shoe size</h3>
+          <p>Enter the matching Zoho item SKU for each size. Quantities sync from Zoho and cannot be changed here. Unmapped sizes stay unavailable while Zoho sync is enabled.</p>
         </div>
         <div className="admin-size-audience" role="group" aria-label="Shoe size range">
           {audiences.map((audience) => <button key={audience.value} type="button" aria-pressed={category === audience.value} onClick={() => onCategoryChange(audience.value)}>{audience.label}</button>)}
@@ -220,21 +228,32 @@ function ShoeSizeSelector({
         {shoeSizes[category].map((size) => {
           const quantity = sizeStock[size] ?? 0;
           const hasStock = quantity > 0;
+          const sku = sizeSkus[size] ?? "";
           return (
             <div key={`${idPrefix}-${category}-${size}`} className={`admin-size-stock-card${hasStock ? " is-stocked" : ""}`}>
               <div className="admin-size-stock-card-heading">
                 <span className="admin-size-label">{size}</span>
-                <span className={`admin-size-status${hasStock ? " is-stocked" : ""}`}>{hasStock ? "In stock" : "Out of stock"}</span>
+                <span className={`admin-size-status${hasStock ? " is-stocked" : ""}`}>{sku ? sizeSyncedAt[size] ? hasStock ? "Zoho stock" : "Out of stock" : "Awaiting sync" : "Add SKU"}</span>
               </div>
+              <label className="sr-only" htmlFor={`${idPrefix}-${category}-${size}-sku`}>Zoho SKU for {size}</label>
+              <input
+                id={`${idPrefix}-${category}-${size}-sku`}
+                value={sku}
+                onChange={(event) => onChangeSizeSku(size, event.target.value)}
+                maxLength={128}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-white outline-none focus:border-sky-400"
+                placeholder="Zoho item SKU"
+              />
               <div className="admin-size-stepper" role="group" aria-label={`${size} quantity`}>
-                <button type="button" onClick={() => onChangeSizeStock(size, Math.max(0, quantity - 1))} aria-label={`Decrease ${size} quantity`} disabled={quantity === 0} className="admin-size-stepper-button">
+                <button type="button" onClick={() => onChangeSizeStock(size, Math.max(0, quantity - 1))} aria-label={`Decrease ${size} quantity`} disabled={Boolean(sku) || quantity === 0} className="admin-size-stepper-button">
                   <Minus size={17} aria-hidden="true" />
                 </button>
                 <output aria-live="polite" aria-label={`${quantity} pairs for ${size}`} className="admin-size-quantity">{quantity}</output>
-                <button type="button" onClick={() => onChangeSizeStock(size, Math.min(100000, quantity + 1))} aria-label={`Increase ${size} quantity`} disabled={quantity >= 100000} className="admin-size-stepper-button">
+                <button type="button" onClick={() => onChangeSizeStock(size, Math.min(100000, quantity + 1))} aria-label={`Increase ${size} quantity`} disabled={Boolean(sku) || quantity >= 100000} className="admin-size-stepper-button">
                   <Plus size={17} aria-hidden="true" />
                 </button>
               </div>
+              {sku && <p className="text-[10px] text-slate-500">Read-only · updated by Zoho sync</p>}
             </div>
           );
         })}
@@ -265,6 +284,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [editingProductType, setEditingProductType] = useState<ProductType>("other");
   const [editingSizeCategory, setEditingSizeCategory] = useState<SizeCategory>("mens");
   const [editingSizeStock, setEditingSizeStock] = useState<Record<string, number>>({});
+  const [editingSizeSkus, setEditingSizeSkus] = useState<Record<string, string>>({});
+  const [editingSizeSyncedAt, setEditingSizeSyncedAt] = useState<Record<string, string>>({});
   const [editingProductSku, setEditingProductSku] = useState("");
   const [editingZohoProductId, setEditingZohoProductId] = useState("");
   const [editingProductColors, setEditingProductColors] = useState("");
@@ -289,6 +310,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     sku: "",
     zoho_product_id: "",
     size_stock: {} as Record<string, number>,
+    zoho_size_skus: {} as Record<string, string>,
     price: "",
     stock: "10",
     image_url: "",
@@ -349,12 +371,19 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   }, [matchingProducts, productListView, productSearch, recentlySoldProductIds]);
 
   const changeFormSizeCategory = (sizeCategory: SizeCategory) => {
-    setProductForm((current) => ({ ...current, size_category: sizeCategory, size_stock: getSizeStockForCategory(current.size_stock, sizeCategory) }));
+    setProductForm((current) => ({
+      ...current,
+      size_category: sizeCategory,
+      size_stock: getSizeStockForCategory(current.size_stock, sizeCategory),
+      zoho_size_skus: Object.fromEntries(Object.entries(current.zoho_size_skus).filter(([size]) => shoeSizes[sizeCategory].includes(size))),
+    }));
   };
 
   const changeEditingSizeCategory = (sizeCategory: SizeCategory) => {
     setEditingSizeCategory(sizeCategory);
     setEditingSizeStock((current) => getSizeStockForCategory(current, sizeCategory));
+    setEditingSizeSkus((current) => Object.fromEntries(Object.entries(current).filter(([size]) => shoeSizes[sizeCategory].includes(size))));
+    setEditingSizeSyncedAt((current) => Object.fromEntries(Object.entries(current).filter(([size]) => shoeSizes[sizeCategory].includes(size))));
   };
 
   const exportStockReport = async () => {
@@ -528,6 +557,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         sku: "",
         zoho_product_id: "",
         size_stock: {},
+        zoho_size_skus: {},
         price: "",
         stock: "10",
         image_url: "",
@@ -597,6 +627,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     setEditingProductType(getProductType(product));
     setEditingSizeCategory(product.size_category ?? "mens");
     setEditingSizeStock(product.size_stock ?? {});
+    setEditingSizeSkus(product.zoho_size_skus ?? {});
+    setEditingSizeSyncedAt(product.zoho_size_stock_synced_at ?? {});
     setEditingProductName(product.name);
     setEditingProductCategory(productCategories.includes(product.category) ? product.category : "Accessories");
     setEditingProductSku(product.sku ?? "");
@@ -632,7 +664,10 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           zoho_product_id: editingZohoProductId,
           colors: editingProductType === "racquet" ? parseOptionList(editingProductColors) : [],
           ...(editingProductType === "shoe"
-            ? { size_stock: getSizeStockForCategory(editingSizeStock, editingSizeCategory) }
+            ? {
+              size_stock: getSizeStockForCategory(editingSizeStock, editingSizeCategory),
+              zoho_size_skus: editingSizeSkus,
+            }
             : { stock, sizes: [], unavailable_sizes: [] }),
           is_active: isActive,
         }),
@@ -882,17 +917,23 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       onCategoryChange={changeFormSizeCategory}
                       sizeStock={productForm.size_stock}
                       onChangeSizeStock={(size, quantity) => setProductForm((current) => ({ ...current, size_stock: { ...current.size_stock, [size]: quantity } }))}
+                      sizeSkus={productForm.zoho_size_skus}
+                      sizeSyncedAt={{}}
+                      onChangeSizeSku={(size, sku) => setProductForm((current) => ({
+                        ...current,
+                        zoho_size_skus: { ...current.zoho_size_skus, [size]: sku },
+                      }))}
                       idPrefix="new-shoe"
                     />
                   )}
-                  <section className="grid gap-3 sm:grid-cols-2">
+                  {productForm.product_type !== "shoe" && <section className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Zoho SKU <span className="font-normal text-slate-500">Optional · exact match</span>
                       <input value={productForm.sku} onChange={(event) => setProductForm((current) => ({ ...current, sku: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" placeholder="Zoho SKU" />
                     </label>
                     <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Zoho product ID <span className="font-normal text-slate-500">Admin only</span>
                       <input value={productForm.zoho_product_id} onChange={(event) => setProductForm((current) => ({ ...current, zoho_product_id: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" placeholder="Zoho product ID" />
                     </label>
-                  </section>
+                  </section>}
                   <section className="grid gap-3 sm:grid-cols-3">
                     <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Sports category
                       <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white">
@@ -1004,17 +1045,27 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                           onCategoryChange={changeEditingSizeCategory}
                           sizeStock={editingSizeStock}
                           onChangeSizeStock={(size, quantity) => setEditingSizeStock((current) => ({ ...current, [size]: quantity }))}
+                          sizeSkus={editingSizeSkus}
+                          sizeSyncedAt={editingSizeSyncedAt}
+                          onChangeSizeSku={(size, sku) => {
+                            setEditingSizeSkus((current) => ({ ...current, [size]: sku }));
+                            setEditingSizeSyncedAt((current) => {
+                              const next = { ...current };
+                              delete next[size];
+                              return next;
+                            });
+                          }}
                           idPrefix={`edit-shoe-${product.id}`}
                         />
                       </div>}
-                      <label className="grid gap-2 text-xs font-semibold text-slate-400">
+                      {editingProductType !== "shoe" && <><label className="grid gap-2 text-xs font-semibold text-slate-400">
                         Zoho SKU
                         <input value={editingProductSku} onChange={(event) => setEditingProductSku(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Enter the exact Zoho item SKU" />
                       </label>
                       <label className="grid gap-2 text-xs font-semibold text-slate-400">
                         Zoho Product ID
                         <input value={editingZohoProductId} onChange={(event) => setEditingZohoProductId(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Zoho product ID (admin only)" />
-                      </label>
+                      </label></>}
                       {editingProductType !== "shoe" && <div className="grid gap-2 text-xs font-semibold text-slate-400">
                         <label htmlFor={`stock-${product.id}`}>Stock quantity{product.sku || product.zoho_product_id ? " (managed by Zoho)" : ""}</label>
                         <div className="flex items-center gap-2">

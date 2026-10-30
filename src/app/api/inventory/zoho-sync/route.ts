@@ -31,26 +31,35 @@ const syncInventory = async (request: Request) => {
 
   const { data: products, error: productsError } = await supabase
     .from("products")
-    .select("id, sku, zoho_product_id, product_type");
+    .select("id, sku, zoho_product_id, product_type, zoho_size_skus, zoho_size_item_ids");
 
   if (productsError) {
     console.error("Zoho stock sync could not load website SKUs:", productsError.message);
+    if ((productsError.code === "42703" || productsError.code === "PGRST204")
+      && /zoho_size_skus|zoho_size_item_ids/i.test(productsError.message)) {
+      return NextResponse.json({ error: "Apply SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql in Supabase before syncing shoe sizes." }, { status: 503 });
+    }
     return NextResponse.json({ error: "Unable to load website product SKUs." }, { status: 500 });
   }
 
-  const allWebsiteProducts = (products ?? [])
-    .filter((product) => product.product_type !== "shoe")
-    .map((product) => ({
+  const allWebsiteProducts = (products ?? []).map((product) => ({
       id: Number(product.id),
+      product_type: product.product_type,
       sku: typeof product.sku === "string" && product.sku.trim() ? normalizeZohoSku(product.sku) : null,
       zoho_product_id: typeof product.zoho_product_id === "string" && product.zoho_product_id.trim() ? product.zoho_product_id.trim() : null,
+      zoho_size_skus: product.zoho_size_skus && typeof product.zoho_size_skus === "object" && !Array.isArray(product.zoho_size_skus)
+        ? product.zoho_size_skus as Record<string, string>
+        : {},
+      zoho_size_item_ids: product.zoho_size_item_ids && typeof product.zoho_size_item_ids === "object" && !Array.isArray(product.zoho_size_item_ids)
+        ? product.zoho_size_item_ids as Record<string, string>
+        : {},
     }));
-  const websiteProducts = allWebsiteProducts.filter((product) => product.sku || product.zoho_product_id);
+  const websiteProducts = allWebsiteProducts.filter((product) => (
+    product.sku || product.zoho_product_id || Object.values(product.zoho_size_skus).some((sku) => sku.trim())
+  ));
 
   try {
     const updates = await getZohoStockUpdates(websiteProducts);
-    let updatedProductCount = 0;
-
     if (updates.length > 0) {
       const { data, error } = await supabase.rpc("sync_zoho_product_stock", { p_updates: updates });
       if (error) {
@@ -66,25 +75,37 @@ const syncInventory = async (request: Request) => {
         }
         return NextResponse.json({ error: "Zoho stock was retrieved but could not be saved." }, { status: 500 });
       }
-      updatedProductCount = Number(data);
-      if (!Number.isInteger(updatedProductCount)) {
+      const updatedItemCount = Number(data);
+      if (!Number.isInteger(updatedItemCount) || updatedItemCount !== updates.length) {
         console.error("Zoho stock sync returned an invalid database update count.");
         return NextResponse.json({ error: "Zoho stock update did not return a valid result." }, { status: 500 });
       }
     }
 
+    const updatedProductCount = new Set(updates.map((update) => update.product_id ?? update.zoho_product_id)).size;
     const matchedZohoIds = new Set(updates.map((update) => update.zoho_product_id));
     const matchedSkus = new Set(updates.map((update) => update.sku && normalizeZohoSku(update.sku)).filter(Boolean));
-    const unmatchedProducts = allWebsiteProducts.filter((product) => (
-      !(product.sku || product.zoho_product_id)
-      ||
-      !(product.zoho_product_id && matchedZohoIds.has(product.zoho_product_id))
-      && !(product.sku && matchedSkus.has(normalizeZohoSku(product.sku)))
-    ));
+    const matchedSizeMappings = new Set(updates
+      .filter((update) => update.product_id !== undefined && update.size)
+      .map((update) => `${update.product_id}:${update.size}`));
+    const unmatchedMappings = allWebsiteProducts.flatMap((product) => {
+      if (product.product_type === "shoe") {
+        const mappings = Object.entries(product.zoho_size_skus).filter(([, sku]) => sku.trim());
+        if (mappings.length === 0) return [`Product #${product.id} (no Zoho SKU mapped by size)`];
+        return mappings
+          .filter(([size]) => !matchedSizeMappings.has(`${product.id}:${size}`))
+          .map(([size, sku]) => `${sku} (${size})`);
+      }
+      if (!(product.sku || product.zoho_product_id)) return [`Product #${product.id} (no Zoho SKU mapped)`];
+      if ((product.zoho_product_id && matchedZohoIds.has(product.zoho_product_id))
+        || (product.sku && matchedSkus.has(normalizeZohoSku(product.sku)))) return [];
+      return [product.sku ?? product.zoho_product_id ?? `Product #${product.id}`];
+    });
     return NextResponse.json({
       success: true,
       updatedProductCount,
-      unmatchedWebsiteSkus: unmatchedProducts.map((product) => product.sku ?? product.zoho_product_id ?? `Product #${product.id}`),
+      updatedSizeCount: updates.filter((update) => update.size).length,
+      unmatchedWebsiteSkus: unmatchedMappings,
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {

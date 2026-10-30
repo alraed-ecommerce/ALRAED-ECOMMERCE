@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/server-auth";
-import { getZohoLowStockThreshold, getZohoStockStatus } from "@/lib/zoho-stock-policy";
+import { getZohoLowStockThreshold, getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 export async function GET() {
   const supabase = createAdminSupabase();
@@ -8,14 +8,17 @@ export async function GET() {
 
   const { data: products, error } = await supabase
     .from("products")
-    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at")
+    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
     .eq("is_active", true)
     .in("category", ["Badminton", "Tennis", "Squash", "Accessories"])
     .order("created_at", { ascending: false });
 
   let productRows = products ?? [];
   if (error) {
-    if (error.code !== "42703" || !/product_type|size_category|size_stock|sku|zoho_product_id|zoho_stock_synced_at/i.test(error.message)) {
+    if (/zoho_size_skus|zoho_size_item_ids|zoho_size_stock_synced_at/i.test(error.message)) {
+      return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql to enable Zoho shoe-size stock." }, { status: 503 });
+    }
+    if (error.code !== "42703" || !/product_type|size_category|size_stock|sku|zoho_product_id|zoho_stock_synced_at|zoho_size_skus|zoho_size_stock_synced_at/i.test(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -34,6 +37,8 @@ export async function GET() {
       sku: null,
       zoho_product_id: null,
       zoho_stock_synced_at: null,
+      zoho_size_skus: null,
+      zoho_size_stock_synced_at: null,
     }));
   }
 
@@ -82,6 +87,8 @@ export async function GET() {
     delete storefrontProduct.sku;
     delete storefrontProduct.zoho_product_id;
     delete storefrontProduct.zoho_stock_synced_at;
+    delete storefrontProduct.zoho_size_skus;
+    delete storefrontProduct.zoho_size_stock_synced_at;
     const stockStatus = getZohoStockStatus(product);
     const inventoryFields = {
       stock_status: stockStatus,
@@ -93,7 +100,8 @@ export async function GET() {
     if (product.product_type === "shoe" && productSizeStock) {
       const size_stock = Object.fromEntries(Object.entries(productSizeStock).map(([size, quantity]) => [
         size,
-        legacySizeReservations.has(productId)
+        (isZohoStockSyncEnabled() && !isZohoSizeStockFresh(product, size))
+          || legacySizeReservations.has(productId)
           ? 0
           : Math.max(0, Number(quantity ?? 0) - (reservedBySize.get(`${productId}:${size}`) ?? 0)),
       ]));

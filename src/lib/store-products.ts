@@ -13,6 +13,8 @@ export type StoreProduct = {
   stock: number;
   stockStatus: "manual" | "verified" | "unavailable";
   lowStockThreshold: number;
+  zohoSizeSkus: Record<string, string>;
+  zohoSizeStockSyncedAt: Record<string, string>;
   colors: string[];
   sizes: string[];
   unavailableSizes: string[];
@@ -83,6 +85,12 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
     lowStockThreshold: Number.isInteger(row.low_stock_threshold ?? row.lowStockThreshold) && Number(row.low_stock_threshold ?? row.lowStockThreshold) >= 0
       ? Number(row.low_stock_threshold ?? row.lowStockThreshold)
       : 3,
+    zohoSizeSkus: row.zoho_size_skus && typeof row.zoho_size_skus === "object" && !Array.isArray(row.zoho_size_skus)
+      ? Object.fromEntries(Object.entries(row.zoho_size_skus).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+      : {},
+    zohoSizeStockSyncedAt: row.zoho_size_stock_synced_at && typeof row.zoho_size_stock_synced_at === "object" && !Array.isArray(row.zoho_size_stock_synced_at)
+      ? Object.fromEntries(Object.entries(row.zoho_size_stock_synced_at).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+      : {},
     colors: productType === "shoe" ? [] : Array.isArray(row.colors) ? row.colors.filter((value): value is string => typeof value === "string") : [],
     sizes: Array.isArray(row.sizes) ? row.sizes.filter((value): value is string => typeof value === "string") : [],
     unavailableSizes: Array.isArray(row.unavailable_sizes) ? row.unavailable_sizes.filter((value): value is string => typeof value === "string") : [],

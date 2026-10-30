@@ -23,7 +23,7 @@ process.env.ZOHO_ACCOUNTS_URL = "https://accounts.zoho.com";
 process.env.ZOHO_API_URL = "https://www.zohoapis.com";
 
 const { getZohoStockUpdates, ZohoInventoryError } = await import("../src/lib/zoho-inventory.ts");
-const { getZohoStockStatus, isZohoStockFresh } = await import("../src/lib/zoho-stock-policy.ts");
+const { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockFresh } = await import("../src/lib/zoho-stock-policy.ts");
 
 test.after(() => {
   globalThis.fetch = originalFetch;
@@ -107,6 +107,42 @@ test("matches by stable Zoho item ID even when the Zoho SKU changes", async () =
   );
 });
 
+test("syncs each shoe size from its own Zoho SKU and preserves size mapping", async () => {
+  const items = [
+    { item_id: "shoe-item-7", sku: "SHOE-UK7-RENAMED", locations: [{ location_id: "location-1", location_available_stock: 3 }] },
+    { item_id: "shoe-item-8", sku: "SHOE-UK8", locations: [{ location_id: "location-1", location_available_stock: 6 }] },
+    { item_id: "shoe-root-item", sku: "SHOE-AGGREGATE", locations: [{ location_id: "location-1", location_available_stock: 100 }] },
+  ];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "accounts.zoho.com") {
+      return Response.json({ access_token: "mock-access-token", api_domain: "https://www.zohoapis.com" });
+    }
+    if (url.pathname === "/inventory/v1/locations") {
+      return Response.json({ code: 0, locations: [{ location_id: "location-1" }] });
+    }
+    if (url.pathname === "/inventory/v1/items") {
+      return Response.json({ code: 0, items, page_context: { has_more_page: false } });
+    }
+    throw new Error(`Unexpected Zoho endpoint: ${url.pathname}`);
+  };
+
+  assert.deepEqual(
+    await getZohoStockUpdates([{
+      id: 42,
+      product_type: "shoe",
+      sku: "SHOE-AGGREGATE",
+      zoho_product_id: "shoe-root-item",
+      zoho_size_skus: { "UK 7": "SHOE-UK7", "UK 8": "SHOE-UK8" },
+      zoho_size_item_ids: { "UK 7": "shoe-item-7" },
+    }]),
+    [
+      { sku: "SHOE-UK7", zoho_product_id: "shoe-item-7", stock: 3, product_id: 42, size: "UK 7" },
+      { sku: "SHOE-UK8", zoho_product_id: "shoe-item-8", stock: 6, product_id: 42, size: "UK 8" },
+    ],
+  );
+});
+
 test("fails safely when a configured location has no stock details", async () => {
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
@@ -145,5 +181,21 @@ test("blocks Zoho-managed stock when mappings or sync timestamps are missing or 
     sku: "R-1",
     zoho_stock_synced_at: "2026-01-01T11:50:00.000Z",
   }, now), "verified");
-  assert.equal(getZohoStockStatus({ name: "Shoe", product_type: "shoe" }, now), "manual");
+  assert.equal(isZohoSizeStockFresh({
+    product_type: "shoe",
+    zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
+    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:50:00.000Z" },
+  }, "UK 7", now), true);
+  assert.equal(isZohoSizeStockFresh({
+    product_type: "shoe",
+    zoho_size_skus: { "UK 7": "SKU-7" },
+    zoho_size_stock_synced_at: {},
+  }, "UK 7", now), false);
+  assert.equal(getZohoStockStatus({
+    name: "Shoe",
+    product_type: "shoe",
+    zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
+    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:50:00.000Z" },
+  }, now), "verified");
+  assert.equal(getZohoStockStatus({ name: "Shoe", product_type: "shoe" }, now), "unavailable");
 });

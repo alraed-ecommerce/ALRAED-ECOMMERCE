@@ -1,7 +1,10 @@
 alter table public.products
   add column if not exists sku text,
   add column if not exists zoho_product_id text,
-  add column if not exists zoho_stock_synced_at timestamptz;
+  add column if not exists zoho_stock_synced_at timestamptz,
+  add column if not exists zoho_size_skus jsonb not null default '{}'::jsonb,
+  add column if not exists zoho_size_item_ids jsonb not null default '{}'::jsonb,
+  add column if not exists zoho_size_stock_synced_at jsonb not null default '{}'::jsonb;
 
 create unique index if not exists products_sku_normalized_unique
   on public.products (upper(btrim(sku)))

@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { getStripe } from "@/lib/stripe";
 import { toFils } from "@/lib/checkout-pricing";
-import { getZohoStockStatus, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
+import { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type CheckoutOrder = {
   order_id: string;
@@ -112,17 +112,23 @@ export async function POST(request: Request) {
     if (isZohoStockSyncEnabled()) {
       const { data: checkoutProducts, error: checkoutProductsError } = await supabase
         .from("products")
-        .select("id, name, product_type, sku, zoho_product_id, zoho_stock_synced_at")
+        .select("id, name, product_type, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
         .in("id", Array.from(quantitiesByProduct.keys()))
         .eq("is_active", true);
       if (checkoutProductsError) {
         console.error("Unable to verify Zoho stock freshness before checkout.", checkoutProductsError.message);
+        if (checkoutProductsError.code === "42703" || checkoutProductsError.code === "PGRST204") {
+          return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql before using Zoho-managed stock." }, { status: 503 });
+        }
         return NextResponse.json({ error: "Unable to verify current stock. Please try again shortly." }, { status: 503 });
       }
       const checkoutProductsById = new Map((checkoutProducts ?? []).map((product) => [Number(product.id), product]));
-      for (const productId of quantitiesByProduct.keys()) {
-        const product = checkoutProductsById.get(productId);
-        if (!product || getZohoStockStatus(product) === "unavailable") {
+      for (const item of itemsByVariant.values()) {
+        const product = checkoutProductsById.get(item.product_id);
+        const validStock = product && (product.product_type === "shoe"
+          ? Boolean(item.size && isZohoSizeStockFresh(product, item.size))
+          : getZohoStockStatus(product) !== "unavailable");
+        if (!validStock) {
           return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });
         }
       }

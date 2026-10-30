@@ -23,6 +23,9 @@ const sizeOptionsByCategory: Record<(typeof allowedSizeCategories)[number], stri
 };
 const normalizeSku = (sku: string | null | undefined) => sku?.trim().toUpperCase() || null;
 const databaseErrorResponse = (error: { code?: string; message: string }) => {
+  if ((error.code === "42703" || error.code === "PGRST204") && /zoho_size_skus|zoho_size_item_ids|zoho_size_stock_synced_at/i.test(error.message)) {
+    return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql before mapping shoe sizes to Zoho." }, { status: 503 });
+  }
   if ((error.code === "42703" || error.code === "PGRST204") && /product_type|size_category|size_stock|colors|sizes|unavailable_sizes/i.test(error.message)) {
     return NextResponse.json({ error: "Run the latest SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql in Supabase before adding or editing product options." }, { status: 503 });
   }
@@ -32,6 +35,9 @@ const databaseErrorResponse = (error: { code?: string; message: string }) => {
   return NextResponse.json({ error: error.message }, { status: 500 });
 };
 const normalizeZohoProductId = (value: string | null | undefined) => value?.trim() || null;
+const normalizeStringRecord = (value: unknown): Record<string, string> => value && typeof value === "object" && !Array.isArray(value)
+  ? Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+  : {};
 const normalizeOptions = (value: unknown, label: string) => {
   if (value === undefined) return { values: undefined as string[] | undefined, error: undefined };
   if (!Array.isArray(value) || value.length > 30 || value.some((option) => typeof option !== "string")) {
@@ -58,6 +64,47 @@ const normalizeSizeStock = (value: unknown, allowedSizes: string[]) => {
     values: Object.fromEntries(allowedSizes.map((size) => [size, Number((value as Record<string, unknown>)[size] ?? 0)])),
     error: undefined,
   };
+};
+const normalizeSizeSkus = (value: unknown, allowedSizes: string[]) => {
+  if (value === undefined) return { values: undefined as Record<string, string> | undefined, error: undefined };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { values: undefined, error: "Enter a Zoho SKU for each mapped shoe size." };
+  }
+  const mappings: Record<string, string> = {};
+  for (const [size, sku] of Object.entries(value)) {
+    if (!allowedSizes.includes(size) || typeof sku !== "string" || sku.trim().length > 128) {
+      return { values: undefined, error: "Each shoe-size Zoho SKU must be valid and match the selected size range." };
+    }
+    if (sku.trim()) mappings[size] = sku.trim();
+  }
+  const normalizedSkus = Object.values(mappings).map((sku) => sku.toUpperCase());
+  if (new Set(normalizedSkus).size !== normalizedSkus.length) {
+    return { values: undefined, error: "Each shoe size must use a different Zoho SKU." };
+  }
+  return { values: mappings, error: undefined };
+};
+const ensureUniqueSizeSkus = async (
+  supabase: NonNullable<ReturnType<typeof createAdminSupabase>>,
+  mappings: Record<string, string>,
+  productId?: number,
+) => {
+  const normalized = new Set(Object.values(mappings).map((sku) => sku.toUpperCase()));
+  if (normalized.size === 0) return null;
+  const { data: products, error } = await supabase.from("products").select("id, sku, zoho_size_skus");
+  if (error) return error;
+  for (const product of products ?? []) {
+    if (Number(product.id) === productId) continue;
+    if (typeof product.sku === "string" && normalized.has(product.sku.trim().toUpperCase())) {
+      return { code: "23505", message: "That Zoho SKU is already assigned to another product." };
+    }
+    const savedMappings = product.zoho_size_skus && typeof product.zoho_size_skus === "object"
+      ? Object.values(product.zoho_size_skus as Record<string, unknown>)
+      : [];
+    if (savedMappings.some((sku) => typeof sku === "string" && normalized.has(sku.trim().toUpperCase()))) {
+      return { code: "23505", message: "That Zoho SKU is already assigned to a shoe size." };
+    }
+  }
+  return null;
 };
 
 export async function GET(request: Request) {
@@ -110,6 +157,7 @@ export async function POST(request: Request) {
       sizes?: unknown;
       unavailable_sizes?: unknown;
       size_stock?: unknown;
+      zoho_size_skus?: unknown;
       product_type?: unknown;
       size_category?: unknown;
     };
@@ -135,6 +183,18 @@ export async function POST(request: Request) {
       ? normalizeSizeStock(body.size_stock, sizeOptionsByCategory[shoeSizeCategory])
       : { values: undefined, error: undefined };
     if (sizeStock.error) return NextResponse.json({ error: sizeStock.error }, { status: 400 });
+    const sizeSkus = productType === "shoe" && shoeSizeCategory
+      ? normalizeSizeSkus(body.zoho_size_skus, sizeOptionsByCategory[shoeSizeCategory])
+      : { values: productType === "shoe" ? {} : undefined, error: undefined };
+    if (sizeSkus.error) return NextResponse.json({ error: sizeSkus.error }, { status: 400 });
+    const sizeSkuConflict = await ensureUniqueSizeSkus(supabase, sizeSkus.values ?? {});
+    if (sizeSkuConflict) {
+      if (sizeSkuConflict.code === "42703" || sizeSkuConflict.code === "PGRST204") {
+        return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql before mapping shoe sizes to Zoho." }, { status: 503 });
+      }
+      if (sizeSkuConflict.code === "23505") return NextResponse.json({ error: sizeSkuConflict.message }, { status: 409 });
+      return NextResponse.json({ error: "Unable to verify that each shoe-size Zoho SKU is unique." }, { status: 500 });
+    }
     if (productType === "shoe") {
       const validSizes = sizeOptionsByCategory[body.size_category as (typeof allowedSizeCategories)[number]];
       if (sizes.values?.some((size) => !validSizes.includes(size))) {
@@ -156,7 +216,11 @@ export async function POST(request: Request) {
     }
 
     const numericPrice = Number(body.price ?? 0);
-    const shoeStockTotal = sizeStock.values ? Object.values(sizeStock.values).reduce((total, quantity) => total + quantity, 0) : 0;
+    const storedSizeStock = sizeStock.values ? { ...sizeStock.values } : undefined;
+    for (const size of Object.keys(sizeSkus.values ?? {})) {
+      if (storedSizeStock) storedSizeStock[size] = 0;
+    }
+    const shoeStockTotal = storedSizeStock ? Object.values(storedSizeStock).reduce((total, quantity) => total + quantity, 0) : 0;
     const numericStock = productType === "shoe" ? shoeStockTotal : Number(body.stock ?? 0);
 
     if (!Number.isFinite(numericPrice) || numericPrice <= 0 || !Number.isInteger(numericStock) || numericStock < 0) {
@@ -175,15 +239,18 @@ export async function POST(request: Request) {
         price: numericPrice,
         image_url: body.image_url.trim(),
         stock: numericStock,
-        sku: normalizeSku(body.sku),
-        zoho_product_id: normalizeZohoProductId(body.zoho_product_id),
+        sku: productType === "shoe" ? null : normalizeSku(body.sku),
+        zoho_product_id: productType === "shoe" ? null : normalizeZohoProductId(body.zoho_product_id),
+        ...(productType === "shoe" ? { zoho_size_skus: sizeSkus.values ?? {} } : {}),
+        ...(productType === "shoe" ? { zoho_size_item_ids: {} } : {}),
+        ...(productType === "shoe" ? { zoho_size_stock_synced_at: {} } : {}),
         is_active: body.is_active ?? true,
         colors: productType === "shoe" ? [] : colors.values ?? [],
         sizes: productType === "shoe" && shoeSizeCategory ? sizeOptionsByCategory[shoeSizeCategory] : sizes.values ?? [],
-        unavailable_sizes: productType === "shoe" && sizeStock.values
-          ? Object.entries(sizeStock.values).filter(([, quantity]) => quantity === 0).map(([size]) => size)
+        unavailable_sizes: productType === "shoe" && storedSizeStock
+          ? Object.entries(storedSizeStock).filter(([, quantity]) => quantity === 0).map(([size]) => size)
           : unavailableSizes.values ?? [],
-        ...(sizeStock.values ? { size_stock: sizeStock.values } : {}),
+        ...(storedSizeStock ? { size_stock: storedSizeStock } : {}),
         product_type: productType,
         size_category: productType === "shoe" ? body.size_category : null,
       })
@@ -219,11 +286,19 @@ export async function PUT(request: Request) {
       sizes?: unknown;
       unavailable_sizes?: unknown;
       size_stock?: unknown;
+      zoho_size_skus?: unknown;
       product_type?: unknown;
       size_category?: unknown;
     };
 
     if (!body.id) return NextResponse.json({ error: "Product id is required." }, { status: 400 });
+    const { data: existingProduct, error: existingProductError } = await supabase
+      .from("products")
+      .select("product_type, size_category, zoho_size_skus, zoho_size_item_ids, zoho_size_stock_synced_at")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (existingProductError) return databaseErrorResponse(existingProductError);
+    if (!existingProduct) return NextResponse.json({ error: "Product not found." }, { status: 404 });
 
     const colors = normalizeOptions(body.colors, "Color");
     const sizes = normalizeOptions(body.sizes, "Size");
@@ -240,12 +315,33 @@ export async function PUT(request: Request) {
     if (body.size_category !== undefined && body.size_category !== null && (typeof body.size_category !== "string" || !allowedSizeCategories.includes(body.size_category as (typeof allowedSizeCategories)[number]))) {
       return NextResponse.json({ error: "Choose a valid shoe size range." }, { status: 400 });
     }
-    const productType = body.product_type as (typeof allowedProductTypes)[number] | undefined;
-    const sizeCategory = body.size_category as (typeof allowedSizeCategories)[number] | null | undefined;
+    const productType = (body.product_type ?? existingProduct.product_type ?? "other") as (typeof allowedProductTypes)[number];
+    const sizeCategory = (body.size_category ?? existingProduct.size_category) as (typeof allowedSizeCategories)[number] | null | undefined;
     const sizeStock = productType === "shoe" && sizeCategory
       ? normalizeSizeStock(body.size_stock, sizeOptionsByCategory[sizeCategory])
       : { values: undefined, error: undefined };
     if (sizeStock.error) return NextResponse.json({ error: sizeStock.error }, { status: 400 });
+    const sizeSkus = productType === "shoe" && sizeCategory
+      ? normalizeSizeSkus(body.zoho_size_skus, sizeOptionsByCategory[sizeCategory])
+      : { values: undefined as Record<string, string> | undefined, error: undefined };
+    if (sizeSkus.error) return NextResponse.json({ error: sizeSkus.error }, { status: 400 });
+    const sizeSkuConflict = sizeSkus.values
+      ? await ensureUniqueSizeSkus(supabase, sizeSkus.values, body.id)
+      : null;
+    if (sizeSkuConflict) {
+      if (sizeSkuConflict.code === "42703" || sizeSkuConflict.code === "PGRST204") {
+        return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql before mapping shoe sizes to Zoho." }, { status: 503 });
+      }
+      if (sizeSkuConflict.code === "23505") return NextResponse.json({ error: sizeSkuConflict.message }, { status: 409 });
+      return NextResponse.json({ error: "Unable to verify that each shoe-size Zoho SKU is unique." }, { status: 500 });
+    }
+    const savedSizeSkus = normalizeStringRecord(existingProduct.zoho_size_skus);
+    const changedSizeKeys = new Set(
+      sizeSkus.values === undefined
+        ? []
+        : [...new Set([...Object.keys(savedSizeSkus), ...Object.keys(sizeSkus.values)])]
+          .filter((size) => (savedSizeSkus[size] ?? "").trim().toUpperCase() !== (sizeSkus.values?.[size] ?? "").trim().toUpperCase()),
+    );
     if (productType === "shoe" && !sizeCategory) return NextResponse.json({ error: "Choose a size range for the shoe." }, { status: 400 });
     if (productType === "shoe" && sizeCategory && sizes.values?.some((size) => !sizeOptionsByCategory[sizeCategory].includes(size))) {
       return NextResponse.json({ error: "One or more shoe sizes do not match the selected size range." }, { status: 400 });
@@ -262,8 +358,16 @@ export async function PUT(request: Request) {
       if (sizes.values !== undefined) updatePayload.sizes = sizes.values;
       if (unavailableSizes.values !== undefined) updatePayload.unavailable_sizes = unavailableSizes.values;
     }
-    if (productType !== undefined) updatePayload.product_type = productType;
+    if (body.product_type !== undefined) updatePayload.product_type = productType;
     if (body.size_category !== undefined) updatePayload.size_category = productType === "shoe" ? sizeCategory : null;
+    if (productType === "shoe") {
+      updatePayload.sku = null;
+      updatePayload.zoho_product_id = null;
+    } else if (body.product_type !== undefined && body.product_type !== "shoe") {
+      updatePayload.zoho_size_skus = {};
+      updatePayload.zoho_size_item_ids = {};
+      updatePayload.zoho_size_stock_synced_at = {};
+    }
     if (body.name !== undefined) {
       if (!body.name.trim()) return NextResponse.json({ error: "Product name cannot be empty." }, { status: 400 });
       updatePayload.name = body.name.trim();
@@ -297,7 +401,17 @@ export async function PUT(request: Request) {
         if (stockError) return NextResponse.json({ error: "Unable to safely update product stock." }, { status: 500 });
       }
     }
-    if (sizeStock.values && productType === "shoe") {
+    const savedSizeSkuValues = Object.values(normalizeStringRecord(existingProduct.zoho_size_skus));
+    const effectiveSizeSkus = sizeSkus.values !== undefined ? Object.values(sizeSkus.values) : savedSizeSkuValues;
+    const hasMappedZohoSizes = productType === "shoe"
+      && effectiveSizeSkus.some((sku) => typeof sku === "string" && sku.trim().length > 0);
+    if (hasMappedZohoSizes) {
+      delete updatePayload.size_stock;
+      delete updatePayload.sizes;
+      delete updatePayload.unavailable_sizes;
+      delete updatePayload.stock;
+    }
+    if (sizeStock.values && productType === "shoe" && !hasMappedZohoSizes) {
       const { error: sizeStockError } = await supabase.rpc("set_product_size_stock_with_reservations", {
         p_product_id: body.id,
         p_size_category: sizeCategory,
@@ -320,7 +434,7 @@ export async function PUT(request: Request) {
       if (body.sku !== null && typeof body.sku !== "string") {
         return NextResponse.json({ error: "Enter a valid SKU." }, { status: 400 });
       }
-      updatePayload.sku = normalizeSku(body.sku);
+      if (productType !== "shoe") updatePayload.sku = normalizeSku(body.sku);
     }
     if (body.zoho_product_id !== undefined) {
       if (body.zoho_product_id !== null && typeof body.zoho_product_id !== "string") {
@@ -329,7 +443,20 @@ export async function PUT(request: Request) {
       if (typeof body.zoho_product_id === "string" && body.zoho_product_id.trim().length > 128) {
         return NextResponse.json({ error: "Zoho product ID must be 128 characters or fewer." }, { status: 400 });
       }
-      updatePayload.zoho_product_id = normalizeZohoProductId(body.zoho_product_id);
+      if (productType !== "shoe") updatePayload.zoho_product_id = normalizeZohoProductId(body.zoho_product_id);
+    }
+    if (sizeSkus.values !== undefined) {
+      updatePayload.zoho_size_skus = sizeSkus.values;
+      if (changedSizeKeys.size > 0) {
+        updatePayload.zoho_size_item_ids = Object.fromEntries(
+          Object.entries(normalizeStringRecord(existingProduct.zoho_size_item_ids))
+            .filter(([size]) => !changedSizeKeys.has(size)),
+        );
+        updatePayload.zoho_size_stock_synced_at = Object.fromEntries(
+          Object.entries(normalizeStringRecord(existingProduct.zoho_size_stock_synced_at))
+            .filter(([size]) => !changedSizeKeys.has(size)),
+        );
+      }
     }
     if (body.image_url !== undefined) updatePayload.image_url = body.image_url.trim();
     if (body.is_active !== undefined) updatePayload.is_active = body.is_active;
