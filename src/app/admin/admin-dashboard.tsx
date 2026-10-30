@@ -520,7 +520,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       setAuthError("Choose whether this product is shoes, a racquet, or other gear.");
       return;
     }
-    if (productForm.product_type === "shoe" && !Object.values(productForm.size_stock).some((quantity) => quantity > 0)) {
+    const hasMappedShoeSizeSku = Object.values(productForm.zoho_size_skus).some((sku) => sku.trim().length > 0);
+    if (productForm.product_type === "shoe" && !hasMappedShoeSizeSku && !Object.values(productForm.size_stock).some((quantity) => quantity > 0)) {
       setAuthError("Add stock to at least one shoe size.");
       return;
     }
