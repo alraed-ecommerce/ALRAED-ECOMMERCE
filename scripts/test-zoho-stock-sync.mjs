@@ -143,6 +143,48 @@ test("syncs each shoe size from its own Zoho SKU and preserves size mapping", as
   );
 });
 
+test("syncs Zoho warehouse inventory by matching configured location names", async () => {
+  const items = [
+    { item_id: "shoe-item-7", sku: "SHOE-UK7", warehouses: [
+      { warehouse_id: "warehouse-madinat", warehouse_name: "MADINAT ZAYED", warehouse_available_stock: 2 },
+      { warehouse_id: "warehouse-other", warehouse_name: "OTHER WAREHOUSE", warehouse_available_stock: 9 },
+    ] },
+    { item_id: "shoe-item-8", sku: "SHOE-UK8", warehouses: [
+      { warehouse_id: "warehouse-madinat", warehouse_name: "MADINAT ZAYED", warehouse_available_stock: 1 },
+    ] },
+    { item_id: "shoe-item-9", sku: "SHOE-UK9", warehouses: [
+      { warehouse_id: "warehouse-madinat", warehouse_name: "MADINAT ZAYED", warehouse_available_stock: 1 },
+    ] },
+  ];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "accounts.zoho.com") {
+      return Response.json({ access_token: "mock-access-token", api_domain: "https://www.zohoapis.com" });
+    }
+    if (url.pathname === "/inventory/v1/locations") {
+      return Response.json({ code: 0, locations: [{ location_id: "location-1", location_name: "Madinat Zayed" }] });
+    }
+    if (url.pathname === "/inventory/v1/items") {
+      return Response.json({ code: 0, items, page_context: { has_more_page: false } });
+    }
+    throw new Error(`Unexpected Zoho endpoint: ${url.pathname}`);
+  };
+
+  assert.deepEqual(
+    await getZohoStockUpdates([{
+      id: 43,
+      product_type: "shoe",
+      sku: null,
+      zoho_size_skus: { "UK 7": "SHOE-UK7", "UK 8": "SHOE-UK8", "UK 9": "SHOE-UK9" },
+    }]),
+    [
+      { sku: "SHOE-UK7", zoho_product_id: "shoe-item-7", stock: 2, product_id: 43, size: "UK 7" },
+      { sku: "SHOE-UK8", zoho_product_id: "shoe-item-8", stock: 1, product_id: 43, size: "UK 8" },
+      { sku: "SHOE-UK9", zoho_product_id: "shoe-item-9", stock: 1, product_id: 43, size: "UK 9" },
+    ],
+  );
+});
+
 test("fails safely when a configured location has no stock details", async () => {
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));

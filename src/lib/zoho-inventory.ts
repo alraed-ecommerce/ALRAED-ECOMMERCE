@@ -5,6 +5,7 @@ type ZohoApiResponse<T> = {
 
 type ZohoLocation = {
   location_id?: string | number;
+  location_name?: string;
   is_active?: boolean;
 };
 
@@ -13,10 +14,17 @@ type ZohoItemLocation = {
   location_available_stock?: number | string;
 };
 
+type ZohoItemWarehouse = {
+  warehouse_id?: string | number;
+  warehouse_name?: string;
+  warehouse_available_stock?: number | string;
+};
+
 type ZohoItem = {
   item_id?: string | number;
   sku?: string;
   locations?: ZohoItemLocation[];
+  warehouses?: ZohoItemWarehouse[];
 };
 
 type ZohoCredentials = {
@@ -40,6 +48,7 @@ export type ZohoStockUpdate = {
 export class ZohoInventoryError extends Error {}
 
 const normalizeSku = (sku: string) => sku.trim().toUpperCase();
+const normalizeLocationName = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleUpperCase();
 const normalizeUrl = (value: string) => value.replace(/\/+$/, "");
 const inventoryApiPath = "inventory/v1/";
 const requestTimeoutMs = 15_000;
@@ -186,12 +195,16 @@ const getLocations = async (credentials: ZohoCredentials, apiUrl: string, access
   const result = await zohoGet<{ locations?: ZohoLocation[] }>(apiUrl, accessToken, "locations", {
     organization_id: credentials.organizationId,
   });
-  const availableIds = new Set((result.locations ?? []).map((location) => String(location.location_id ?? "")));
+  const locationsById = new Map((result.locations ?? [])
+    .filter((location) => location.location_id !== undefined && location.location_id !== null)
+    .map((location) => [String(location.location_id), location]));
+  const availableIds = new Set(locationsById.keys());
   const missingIds = credentials.locationIds.filter((id) => !availableIds.has(id));
 
   if (missingIds.length > 0) {
     throw new ZohoInventoryError(`Configured Zoho location IDs were not found: ${missingIds.join(", ")}.`);
   }
+  return locationsById;
 };
 
 const getItems = async (credentials: ZohoCredentials, apiUrl: string, accessToken: string) => {
@@ -310,7 +323,7 @@ export const getZohoStockUpdates = async (
 
   const credentials = getCredentials();
   const { accessToken, apiUrl } = await getAccessToken(credentials);
-  await getLocations(credentials, apiUrl, accessToken);
+  const locationsById = await getLocations(credentials, apiUrl, accessToken);
   const items = await getItems(credentials, apiUrl, accessToken);
   const matchingItems = new Map<string, {
     item: ZohoItem;
@@ -331,7 +344,7 @@ export const getZohoStockUpdates = async (
 
   const itemsNeedingDetails = Array.from(matchingItems.values())
     .map(({ item }) => item)
-    .filter((item) => !Array.isArray(item.locations));
+    .filter((item) => !Array.isArray(item.locations) && !Array.isArray(item.warehouses));
   const detailedItems = await getItemDetails(credentials, apiUrl, accessToken, itemsNeedingDetails);
   detailedItems.forEach((item) => {
     const itemId = item.item_id === undefined || item.item_id === null ? "" : String(item.item_id);
@@ -345,21 +358,40 @@ export const getZohoStockUpdates = async (
       throw new ZohoInventoryError(`Zoho did not return an item ID for ${product.sku ? `SKU ${product.sku}` : "a mapped item"}.`);
     }
     const sku = product.sku ?? item.sku ?? key.replace(/^sku:/, "");
-    if (!Array.isArray(item.locations)) {
+    if (!Array.isArray(item.locations) && !Array.isArray(item.warehouses)) {
       throw new ZohoInventoryError(`Zoho did not return warehouse stock details for SKU ${sku}. No stock was changed.`);
     }
-    const selectedLocations = new Set(credentials.locationIds);
     let availableStock = 0;
-    const seenLocationIds = new Set<string>();
-    for (const location of item.locations) {
-      const locationId = String(location.location_id ?? "");
-      if (!selectedLocations.has(locationId)) continue;
-      if (seenLocationIds.has(locationId)) {
+    const stockByLocation = Array.isArray(item.locations)
+      ? credentials.locationIds.map((locationId) => ({
+        locationId,
+        quantity: item.locations?.find((location) => String(location.location_id ?? "") === locationId)?.location_available_stock,
+        matches: item.locations?.filter((location) => String(location.location_id ?? "") === locationId).length ?? 0,
+      }))
+      : credentials.locationIds.map((locationId) => {
+        const location = locationsById.get(locationId);
+        const locationName = location?.location_name;
+        if (!locationName?.trim()) {
+          throw new ZohoInventoryError(`Zoho did not return a name for configured location ${locationId}; warehouse stock for SKU ${sku} cannot be matched safely.`);
+        }
+        const matches = (item.warehouses ?? []).filter((warehouse) => (
+          typeof warehouse.warehouse_name === "string"
+          && normalizeLocationName(warehouse.warehouse_name) === normalizeLocationName(locationName)
+        ));
+        return {
+          locationId,
+          quantity: matches[0]?.warehouse_available_stock,
+          matches: matches.length,
+        };
+      });
+
+    for (const { quantity: quantityValue, matches } of stockByLocation) {
+      if (matches > 1) {
         throw new ZohoInventoryError(`Zoho returned duplicate warehouse stock for SKU ${sku}.`);
       }
-      seenLocationIds.add(locationId);
-
-      const quantityValue = location.location_available_stock;
+      if (matches === 0) {
+        throw new ZohoInventoryError(`Zoho did not return stock details for every configured location for SKU ${sku}. No stock was changed.`);
+      }
       if (
         (typeof quantityValue !== "number" && typeof quantityValue !== "string")
         || (typeof quantityValue === "string" && quantityValue.trim() === "")
@@ -369,11 +401,6 @@ export const getZohoStockUpdates = async (
       }
       const quantity = Number(quantityValue);
       availableStock += quantity;
-    }
-
-    const missingLocationIds = credentials.locationIds.filter((locationId) => !seenLocationIds.has(locationId));
-    if (missingLocationIds.length > 0) {
-      throw new ZohoInventoryError(`Zoho did not return stock details for every configured location for SKU ${sku}. No stock was changed.`);
     }
 
     updates.push({
