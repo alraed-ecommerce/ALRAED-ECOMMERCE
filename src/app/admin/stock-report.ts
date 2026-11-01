@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import type { ProductType } from "@/lib/product-variants";
 
 export type StockReportProduct = {
   name: string;
@@ -10,7 +11,7 @@ export type StockReportProduct = {
   stock: number;
   is_active?: boolean;
   size_stock?: Record<string, number>;
-  product_type?: "shoe" | "racquet" | "other";
+  product_type?: ProductType;
   zoho_stock_synced_at?: string | null;
 };
 

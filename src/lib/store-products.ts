@@ -1,4 +1,4 @@
-import { productTypes, usesZohoSizeStock, type ProductType } from "@/lib/product-variants";
+import { productTypes, usesZohoSizeStock, type ProductType } from "./product-variants.ts";
 
 export type StoreProduct = {
   id: number;

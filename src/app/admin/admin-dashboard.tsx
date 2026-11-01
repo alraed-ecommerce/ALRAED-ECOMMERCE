@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
-import { getProductSizes, productTypes, shoeSizeCategories, shoeSizes, type ProductType, type ShoeSizeCategory } from "@/lib/product-variants";
+import { getProductSizes, productTypes, shoeSizes, type ProductType, type ShoeSizeCategory } from "@/lib/product-variants";
 import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
 
@@ -925,7 +925,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       idPrefix="new-shoe"
                     />
                   )}
-                  {productForm.product_type !== "shoe" && productForm.product_type !== "" && getProductSizes(productForm.product_type).length > 0 && (
+                  {productForm.product_type !== "shoe" && getProductSizes(productForm.product_type).length > 0 && (
                     <ShoeSizeSelector
                       sizeOptions={getProductSizes(productForm.product_type)}
                       sizeStock={{}}
@@ -938,7 +938,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       idPrefix={`new-${productForm.product_type}`}
                     />
                   )}
-                  {productForm.product_type !== "shoe" && productForm.product_type !== "" && getProductSizes(productForm.product_type).length === 0 && <section className="grid gap-3 sm:grid-cols-2">
+                  {productForm.product_type !== "shoe" && getProductSizes(productForm.product_type).length === 0 && <section className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Zoho SKU <span className="font-normal text-slate-500">Exact match</span>
                       <input value={productForm.sku} onChange={(event) => setProductForm((current) => ({ ...current, sku: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" placeholder="Zoho SKU" />
                     </label>

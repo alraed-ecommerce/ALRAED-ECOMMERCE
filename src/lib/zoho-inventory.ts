@@ -1,4 +1,4 @@
-import { usesZohoSizeStock } from "@/lib/product-variants";
+import { usesZohoSizeStock } from "./product-variants.ts";
 
 type ZohoApiResponse<T> = {
   code?: number;

@@ -1,4 +1,4 @@
-import { usesZohoSizeStock } from "@/lib/product-variants";
+import { usesZohoSizeStock } from "./product-variants.ts";
 
 export type ZohoStockStatus = "manual" | "verified" | "unavailable";
 
