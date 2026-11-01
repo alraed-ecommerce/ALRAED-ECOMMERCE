@@ -106,7 +106,7 @@ begin
             and (
               nullif(btrim(updates.update_row->>'size'), '') is null
               or (
-                mapped_product.product_type in ('shoe', 'tshirt', 'shorts', 'socks')
+                updates.update_row->>'size' = any(mapped_product.sizes)
                 and (
                   upper(btrim(mapped_product.zoho_size_skus ->> (updates.update_row->>'size')))
                     = upper(btrim(updates.update_row->>'sku'))
@@ -152,9 +152,7 @@ begin
 
     v_size := nullif(btrim(v_update.update_row->>'size'), '');
     if v_size is not null then
-      if v_product.product_type not in ('shoe', 'tshirt', 'shorts', 'socks')
-        or not (v_size = any(v_product.sizes))
-        or upper(btrim(v_product.zoho_size_skus ->> v_size)) <> upper(btrim(v_update.update_row->>'sku')) then
+      if not (v_size = any(v_product.sizes)) then
         raise exception using message = 'ZOHO_SIZE_MAPPING_INVALID:' || v_product.id || ':' || v_size;
       end if;
 
@@ -180,8 +178,13 @@ begin
       end if;
 
       v_sync_time := clock_timestamp();
+      select coalesce(jsonb_object_agg(entry.key, entry.value), '{}'::jsonb)
+      into v_updated_size_stock
+      from jsonb_each(coalesce(v_product.size_stock, '{}'::jsonb)) as entry(key, value)
+      where entry.key = any(v_product.sizes);
+
       v_updated_size_stock := jsonb_set(
-        coalesce(v_product.size_stock, '{}'::jsonb),
+        v_updated_size_stock,
         array[v_size],
         to_jsonb(v_external_stock - v_pending_sales),
         true

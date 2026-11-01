@@ -3,7 +3,6 @@ import Stripe from "stripe";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { getStripe } from "@/lib/stripe";
 import { toFils } from "@/lib/checkout-pricing";
-import { usesZohoSizeStock } from "@/lib/product-variants";
 import { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type CheckoutOrder = {
@@ -126,7 +125,8 @@ export async function POST(request: Request) {
       const checkoutProductsById = new Map((checkoutProducts ?? []).map((product) => [Number(product.id), product]));
       for (const item of itemsByVariant.values()) {
         const product = checkoutProductsById.get(item.product_id);
-        const validStock = product && ((usesZohoSizeStock(product.product_type) || /shoe|sneaker/i.test(product.name ?? ""))
+        const usesSizeSkus = Boolean(product && (product.product_type === "shoe" || Object.keys(product.zoho_size_skus ?? {}).length > 0));
+        const validStock = product && (usesSizeSkus
           ? Boolean(item.size && isZohoSizeStockFresh(product, item.size))
           : getZohoStockStatus(product) !== "unavailable");
         if (!validStock) {

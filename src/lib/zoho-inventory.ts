@@ -1,5 +1,3 @@
-import { usesZohoSizeStock } from "./product-variants.ts";
-
 type ZohoApiResponse<T> = {
   code?: number;
   message?: string;
@@ -332,11 +330,11 @@ export const getZohoStockUpdates = async (
     productsByZohoId.set(zohoProductId, mapping);
   };
   for (const product of websiteProducts) {
-    const isSizeTracked = usesZohoSizeStock(product.product_type);
-    const zohoProductId = isSizeTracked ? "" : product.zoho_product_id?.trim() || "";
-    const sku = isSizeTracked ? "" : product.sku?.trim() || "";
     const sizeSkus = product.zoho_size_skus ?? {};
     const sizeItemIds = product.zoho_size_item_ids ?? {};
+    const hasSizeSkus = Object.values(sizeSkus).some((sizeSku) => sizeSku.trim());
+    const zohoProductId = product.product_type === "shoe" || hasSizeSkus ? "" : product.zoho_product_id?.trim() || "";
+    const sku = product.product_type === "shoe" || hasSizeSkus ? "" : product.sku?.trim() || "";
     for (const [size, sizeSku] of Object.entries(sizeSkus)) {
       if (sizeSku.trim()) {
         const mapping = {
@@ -355,7 +353,7 @@ export const getZohoStockUpdates = async (
       zoho_product_id: zohoProductId,
       ...(product.id !== undefined ? { product_id: product.id } : {}),
     });
-    else if (sku && !isSizeTracked && Object.keys(sizeSkus).length === 0) {
+    else if (sku && product.product_type !== "shoe" && !hasSizeSkus) {
       addSkuMapping(sku, { sku, zoho_product_id: "", ...(product.id !== undefined ? { product_id: product.id } : {}) });
     }
   }

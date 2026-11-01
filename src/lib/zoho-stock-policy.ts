@@ -1,5 +1,3 @@
-import { usesZohoSizeStock } from "./product-variants.ts";
-
 export type ZohoStockStatus = "manual" | "verified" | "unavailable";
 
 type ZohoStockProduct = {
@@ -51,9 +49,9 @@ export function isZohoStockFresh(
 export function getZohoStockStatus(product: ZohoStockProduct, now = Date.now()): ZohoStockStatus {
   if (!isZohoStockSyncEnabled()) return "manual";
 
-  const isSizeTracked = usesZohoSizeStock(product.product_type) || /shoe|sneaker/i.test(product.name ?? "");
-  if (isSizeTracked) {
-    const mappings = Object.entries(product.zoho_size_skus ?? {}).filter(([, sku]) => sku.trim());
+  const sizeMappings = Object.entries(product.zoho_size_skus ?? {}).filter(([, sku]) => sku.trim());
+  if (product.product_type === "shoe" || sizeMappings.length > 0) {
+    const mappings = sizeMappings;
     return mappings.some(([size]) => isZohoSizeStockFresh(product, size, now)) ? "verified" : "unavailable";
   }
 

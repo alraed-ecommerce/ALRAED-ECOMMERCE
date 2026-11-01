@@ -264,5 +264,17 @@ test("blocks Zoho-managed stock when mappings or sync timestamps are missing or 
     zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
     zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:50:00.000Z" },
   }, now), "verified");
+  assert.equal(getZohoStockStatus({
+    name: "T-shirt",
+    product_type: "other",
+    zoho_size_skus: { S: "TS-S", M: "TS-M" },
+    zoho_size_stock_synced_at: { S: "2026-01-01T11:50:00.000Z" },
+  }, now), "verified");
+  assert.equal(getZohoStockStatus({
+    name: "Socks",
+    product_type: "other",
+    zoho_size_skus: { Small: "SOCK-S" },
+    zoho_size_stock_synced_at: {},
+  }, now), "unavailable");
   assert.equal(getZohoStockStatus({ name: "Shoe", product_type: "shoe" }, now), "unavailable");
 });

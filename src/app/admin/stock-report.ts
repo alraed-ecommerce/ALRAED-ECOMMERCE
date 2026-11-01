@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
-import type { ProductType } from "@/lib/product-variants";
+
+type ProductType = "shoe" | "racquet" | "other";
 
 export type StockReportProduct = {
   name: string;

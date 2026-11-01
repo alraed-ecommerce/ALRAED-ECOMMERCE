@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
-import { usesZohoSizeStock } from "@/lib/product-variants";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { getZohoStockUpdates, normalizeZohoSku, ZohoInventoryError } from "@/lib/zoho-inventory";
 
@@ -90,7 +89,7 @@ const syncInventory = async (request: Request) => {
       .filter((update) => update.product_id !== undefined && update.size)
       .map((update) => `${update.product_id}:${update.size}`));
     const unmatchedMappings = allWebsiteProducts.flatMap((product) => {
-      if (usesZohoSizeStock(product.product_type)) {
+      if (product.product_type === "shoe" || Object.values(product.zoho_size_skus).some((sku) => sku.trim())) {
         const mappings = Object.entries(product.zoho_size_skus).filter(([, sku]) => sku.trim());
         if (mappings.length === 0) return [`Product #${product.id} (no Zoho SKU mapped by size)`];
         return mappings

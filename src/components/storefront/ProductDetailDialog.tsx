@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, ShoppingBag, X } from "lucide-react";
 import testProductDetails from "@/lib/test-product-details.json";
-import { getProductVariantStock, hasSizeStock, isFootwearProduct, type StoreProduct } from "@/lib/store-products";
+import { isFootwearProduct, type StoreProduct } from "@/lib/store-products";
 
 type ProductDetails = { description: string; specifications: Record<string, string> };
 
@@ -81,16 +81,18 @@ export default function ProductDetailDialog({
   };
   const details = product ? getProductDetails(product) : null;
   const needsSize = product ? isFootwearProduct(product) : false;
-  const tracksSizeStock = product ? hasSizeStock(product) : false;
+  const hasSizeStock = Boolean(product && (needsSize || (product.sizes.length > 0 && Object.keys(product.sizeStock).length > 0)));
   const selectedStock = product
-    ? getProductVariantStock(product, tracksSizeStock ? selectedSize : undefined)
+    ? hasSizeStock
+      ? selectedSize ? product.sizeStock[selectedSize] ?? 0 : 0
+      : product.stock
     : 0;
   const hasMissingOptions = Boolean(product && (
     (product.colors.length > 0 && !needsSize && !selectedColor)
     || (needsSize && (!product.sizes.length || !selectedSize))
     || (product.sizes.length > 0 && !selectedSize)
     || (product.unavailableSizes.includes(selectedSize))
-    || (tracksSizeStock && selectedStock < 1)
+    || (hasSizeStock && selectedStock < 1)
   ));
 
   useEffect(() => {
@@ -178,7 +180,7 @@ export default function ProductDetailDialog({
                 <button type="button" aria-label="Increase quantity" onClick={() => changeQuantity((value) => Math.min(Math.min(selectedStock, 50), value + 1))} disabled={quantity >= Math.min(selectedStock, 50)}><Plus size={15} /></button>
               </div>
               <button className="ar-button ar-button-light ar-product-detail-add" type="button" onClick={() => onAdd(product, quantity, { color: needsSize ? undefined : selectedColor || undefined, size: selectedSize || undefined })} disabled={selectedStock < 1 || quantity > selectedStock || hasMissingOptions || product.stockStatus === "unavailable"}>
-                {product.stockStatus === "unavailable" ? "UNAVAILABLE" : product.stock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
+                {product.stockStatus === "unavailable" ? "UNAVAILABLE" : selectedStock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
               </button>
             </div>
             <p className="ar-product-detail-footnote">UAE-wide delivery · Availability shown from current stock</p>

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { usesZohoSizeStock } from "@/lib/product-variants";
 import { createAdminSupabase } from "@/lib/server-auth";
 import { getZohoLowStockThreshold, getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
@@ -98,15 +97,15 @@ export async function GET() {
     const productSizeStock = product.size_stock && typeof product.size_stock === "object" && !Array.isArray(product.size_stock)
       ? product.size_stock as Record<string, number>
       : null;
-    if (usesZohoSizeStock(product.product_type) && productSizeStock) {
-      const size_stock = Object.fromEntries(Object.entries(productSizeStock).map(([size, quantity]) => [
+    if ((product.product_type === "shoe" || Object.keys(product.zoho_size_skus ?? {}).length > 0) && productSizeStock) {
+      const sizes = Array.isArray(product.sizes) ? product.sizes : Object.keys(productSizeStock);
+      const size_stock = Object.fromEntries(sizes.map((size) => [
         size,
         (isZohoStockSyncEnabled() && !isZohoSizeStockFresh(product, size))
           || legacySizeReservations.has(productId)
           ? 0
-          : Math.max(0, Number(quantity ?? 0) - (reservedBySize.get(`${productId}:${size}`) ?? 0)),
+          : Math.max(0, Number(productSizeStock[size] ?? 0) - (reservedBySize.get(`${productId}:${size}`) ?? 0)),
       ]));
-      const sizes = Array.isArray(product.sizes) ? product.sizes : Object.keys(size_stock);
       return {
         ...storefrontProduct,
         ...inventoryFields,

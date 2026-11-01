@@ -3,7 +3,6 @@ import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { parseCheckoutCart } from "@/lib/checkout-cart";
 import { calculateCheckoutTotals, toFils, validateCouponEligibility, type CouponForValidation } from "@/lib/checkout-pricing";
 import { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
-import { usesZohoSizeStock } from "@/lib/product-variants";
 
 type ProductRow = {
   id: number;
@@ -83,18 +82,20 @@ export async function POST(request: Request) {
       }
       const colors = product.colors ?? [];
       const sizes = product.sizes ?? [];
-      const isSizeTracked = usesZohoSizeStock(product.product_type) || /shoe|sneaker/i.test(product.name);
+      const isShoe = product.product_type === "shoe" || /shoe|sneaker/i.test(product.name);
       const zohoStockProduct = zohoProductsById.get(cartItem.productId);
-      if (isZohoStockSyncEnabled() && (isSizeTracked
+      const hasSizeMappings = Object.keys(zohoStockProduct?.zoho_size_skus ?? {}).length > 0;
+      const usesSizeSkus = isShoe || hasSizeMappings;
+      if (isZohoStockSyncEnabled() && (usesSizeSkus
         ? !cartItem.size || !zohoStockProduct || !isZohoSizeStockFresh(zohoStockProduct, cartItem.size)
         : !zohoStockProduct || getZohoStockStatus(zohoStockProduct) === "unavailable")) {
         return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });
       }
       if ((colors.length > 0 && !cartItem.color)
-        || ((sizes.length > 0 || isSizeTracked) && !cartItem.size)
+        || ((sizes.length > 0 || isShoe) && !cartItem.size)
         || (cartItem.color && !colors.includes(cartItem.color))
         || (cartItem.size && (!sizes.includes(cartItem.size) || (product.unavailable_sizes ?? []).includes(cartItem.size)))
-        || (isSizeTracked && cartItem.size && Number(product.size_stock?.[cartItem.size] ?? 0) < cartItem.quantity)) {
+        || (usesSizeSkus && cartItem.size && Number(product.size_stock?.[cartItem.size] ?? 0) < cartItem.quantity)) {
         return NextResponse.json({ error: "A selected product option is no longer available. Refresh your bag and try again." }, { status: 409 });
       }
 
