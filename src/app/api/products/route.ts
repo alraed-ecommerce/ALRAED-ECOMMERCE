@@ -112,7 +112,7 @@ export async function GET() {
         size_stock,
         sizes,
         unavailable_sizes: sizes.filter((size) => Number(size_stock[size] ?? 0) < 1),
-        stock: Object.values(size_stock).reduce((total, quantity) => total + quantity, 0),
+        stock: Object.values(size_stock).reduce<number>((total, quantity) => total + Number(quantity), 0),
       };
     }
     return {
