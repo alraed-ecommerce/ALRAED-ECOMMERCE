@@ -403,12 +403,12 @@ begin
     from jsonb_array_elements(v_order_items) as line(value)
     where (line.value ->> 'product_id')::bigint = v_product_id;
     v_requested_product_quantity := v_requested_product_quantity + v_quantity;
-    if v_product.product_type <> 'shoe'
+    if v_product.product_type not in ('shoe', 'tshirt', 'shorts', 'socks')
       and coalesce(v_product.stock, 0) - v_reserved_quantity < v_requested_product_quantity then
       raise exception using message = 'INSUFFICIENT_STOCK:' || v_product_id, errcode = 'P0001';
     end if;
 
-    if v_product.product_type = 'shoe' then
+    if v_product.product_type in ('shoe', 'tshirt', 'shorts', 'socks') then
       if exists (
         select 1 from public.stripe_order_stock_reservations
         where product_id = v_product_id and size_key = ''

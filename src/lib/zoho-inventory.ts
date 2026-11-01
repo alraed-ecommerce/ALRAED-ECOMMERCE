@@ -1,3 +1,5 @@
+import { usesZohoSizeStock } from "@/lib/product-variants";
+
 type ZohoApiResponse<T> = {
   code?: number;
   message?: string;
@@ -330,8 +332,9 @@ export const getZohoStockUpdates = async (
     productsByZohoId.set(zohoProductId, mapping);
   };
   for (const product of websiteProducts) {
-    const zohoProductId = product.product_type === "shoe" ? "" : product.zoho_product_id?.trim() || "";
-    const sku = product.product_type === "shoe" ? "" : product.sku?.trim() || "";
+    const isSizeTracked = usesZohoSizeStock(product.product_type);
+    const zohoProductId = isSizeTracked ? "" : product.zoho_product_id?.trim() || "";
+    const sku = isSizeTracked ? "" : product.sku?.trim() || "";
     const sizeSkus = product.zoho_size_skus ?? {};
     const sizeItemIds = product.zoho_size_item_ids ?? {};
     for (const [size, sizeSku] of Object.entries(sizeSkus)) {
@@ -352,7 +355,7 @@ export const getZohoStockUpdates = async (
       zoho_product_id: zohoProductId,
       ...(product.id !== undefined ? { product_id: product.id } : {}),
     });
-    else if (sku && product.product_type !== "shoe" && Object.keys(sizeSkus).length === 0) {
+    else if (sku && !isSizeTracked && Object.keys(sizeSkus).length === 0) {
       addSkuMapping(sku, { sku, zoho_product_id: "", ...(product.id !== undefined ? { product_id: product.id } : {}) });
     }
   }

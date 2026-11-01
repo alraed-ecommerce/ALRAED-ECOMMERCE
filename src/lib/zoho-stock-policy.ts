@@ -1,3 +1,5 @@
+import { usesZohoSizeStock } from "@/lib/product-variants";
+
 export type ZohoStockStatus = "manual" | "verified" | "unavailable";
 
 type ZohoStockProduct = {
@@ -49,8 +51,8 @@ export function isZohoStockFresh(
 export function getZohoStockStatus(product: ZohoStockProduct, now = Date.now()): ZohoStockStatus {
   if (!isZohoStockSyncEnabled()) return "manual";
 
-  const isShoe = product.product_type === "shoe" || /shoe|sneaker/i.test(product.name ?? "");
-  if (isShoe) {
+  const isSizeTracked = usesZohoSizeStock(product.product_type) || /shoe|sneaker/i.test(product.name ?? "");
+  if (isSizeTracked) {
     const mappings = Object.entries(product.zoho_size_skus ?? {}).filter(([, sku]) => sku.trim());
     return mappings.some(([size]) => isZohoSizeStockFresh(product, size, now)) ? "verified" : "unavailable";
   }

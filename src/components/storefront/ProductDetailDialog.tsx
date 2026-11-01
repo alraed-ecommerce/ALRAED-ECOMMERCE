@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, ShoppingBag, X } from "lucide-react";
 import testProductDetails from "@/lib/test-product-details.json";
-import { isFootwearProduct, type StoreProduct } from "@/lib/store-products";
+import { getProductVariantStock, hasSizeStock, isFootwearProduct, type StoreProduct } from "@/lib/store-products";
 
 type ProductDetails = { description: string; specifications: Record<string, string> };
 
@@ -81,17 +81,16 @@ export default function ProductDetailDialog({
   };
   const details = product ? getProductDetails(product) : null;
   const needsSize = product ? isFootwearProduct(product) : false;
+  const tracksSizeStock = product ? hasSizeStock(product) : false;
   const selectedStock = product
-    ? needsSize
-      ? selectedSize ? product.sizeStock[selectedSize] ?? 0 : 0
-      : product.stock
+    ? getProductVariantStock(product, tracksSizeStock ? selectedSize : undefined)
     : 0;
   const hasMissingOptions = Boolean(product && (
     (product.colors.length > 0 && !needsSize && !selectedColor)
     || (needsSize && (!product.sizes.length || !selectedSize))
     || (product.sizes.length > 0 && !selectedSize)
     || (product.unavailableSizes.includes(selectedSize))
-    || (needsSize && selectedStock < 1)
+    || (tracksSizeStock && selectedStock < 1)
   ));
 
   useEffect(() => {

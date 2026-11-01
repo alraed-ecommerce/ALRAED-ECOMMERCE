@@ -1,6 +1,8 @@
+import { productTypes, usesZohoSizeStock, type ProductType } from "@/lib/product-variants";
+
 export type StoreProduct = {
   id: number;
-  productType: "shoe" | "racquet" | "other";
+  productType: ProductType;
   sizeCategory: "mens" | "womens" | "kids" | null;
   name: string;
   brand: string;
@@ -57,12 +59,24 @@ export function hasProductOptions(product: Pick<StoreProduct, "name" | "colors" 
   return product.colors.length > 0 || product.sizes.length > 0 || isFootwearProduct(product);
 }
 
+export function getProductVariantStock(product: StoreProduct, size?: string) {
+  if (product.sizes.length > 0 || isFootwearProduct(product)) {
+    return size ? Math.max(0, product.sizeStock[size] ?? 0) : 0;
+  }
+  return product.stock;
+}
+
+export function hasSizeStock(product: Pick<StoreProduct, "name" | "sizes" | "productType">) {
+  return product.sizes.length > 0 || isFootwearProduct(product);
+}
+
 export function getCartLineKey(line: Pick<CartLine, "product" | "color" | "size">) {
   return JSON.stringify([line.product.id, line.color ?? null, line.size ?? null]);
 }
 
 export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
-  const productType = row.product_type === "shoe" || row.product_type === "racquet" ? row.product_type : /shoe|sneaker/i.test(String(row.name ?? "")) ? "shoe" : /racket|racquet/i.test(String(row.name ?? "")) ? "racquet" : "other";
+  const savedProductType = productTypes.find((productType) => productType === row.product_type);
+  const productType = savedProductType ?? (/shoe|sneaker/i.test(String(row.name ?? "")) ? "shoe" : /racket|racquet/i.test(String(row.name ?? "")) ? "racquet" : "other");
   const sizeStock = row.size_stock && typeof row.size_stock === "object" && !Array.isArray(row.size_stock)
     ? Object.fromEntries(Object.entries(row.size_stock).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] >= 0))
     : {};
@@ -78,7 +92,7 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
     description: String(row.description ?? ""),
     rating: Number(row.rating ?? 0),
     reviews: Number(row.reviews ?? 0),
-    stock: productType === "shoe" ? Object.values(sizeStock).reduce((total, quantity) => total + quantity, 0) : Math.max(0, Number(row.stock ?? 0)),
+    stock: usesZohoSizeStock(productType) ? Object.values(sizeStock).reduce((total, quantity) => total + quantity, 0) : Math.max(0, Number(row.stock ?? 0)),
     stockStatus: row.stock_status === "verified" || row.stock_status === "unavailable"
       ? row.stock_status
       : row.stockStatus === "verified" || row.stockStatus === "unavailable" ? row.stockStatus : "manual",

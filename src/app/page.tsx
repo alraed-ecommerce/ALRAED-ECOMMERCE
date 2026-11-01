@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import AthleteShowcase from "./AthleteShowcase";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
-import { getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
+import { getCartLineKey, getProductVariantStock, hasProductOptions, hasSizeStock, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
 import type { HomeCampaign } from "@/lib/home-campaigns";
 import {
@@ -610,21 +610,31 @@ export default function Home() {
     if (product.stock < 1 || product.stockStatus === "unavailable") return false;
     if ((product.colors.length > 0 && !options.color)
       || ((product.sizes.length > 0 || isFootwearProduct(product)) && !options.size)) return false;
+    const variantStock = getProductVariantStock(product, options.size);
+    if (variantStock < 1) return false;
     const newLine = { product, quantity: requestedQuantity, ...options };
     const newLineKey = getCartLineKey(newLine);
     const existingLine = cart.find((line) => getCartLineKey(line) === newLineKey);
     const otherVariantQuantity = cart.reduce((total, line) => (
-      line.product.id === product.id && getCartLineKey(line) !== newLineKey ? total + line.quantity : total
+      line.product.id === product.id
+        && (hasSizeStock(product) ? line.size === options.size : getCartLineKey(line) !== newLineKey)
+        && getCartLineKey(line) !== newLineKey
+        ? total + line.quantity
+        : total
     ), 0);
-    const availableForVariant = Math.min(Math.max(0, product.stock - otherVariantQuantity), 50);
+    const availableForVariant = Math.min(Math.max(0, variantStock - otherVariantQuantity), 50);
     if (availableForVariant < 1) return false;
     setCart((items) => {
       const existing = items.find((line) => getCartLineKey(line) === newLineKey);
       if (existing) {
         const otherQuantity = items.reduce((total, line) => (
-          line.product.id === product.id && getCartLineKey(line) !== newLineKey ? total + line.quantity : total
+          line.product.id === product.id
+            && (hasSizeStock(product) ? line.size === options.size : getCartLineKey(line) !== newLineKey)
+            && getCartLineKey(line) !== newLineKey
+            ? total + line.quantity
+            : total
         ), 0);
-        const maximum = Math.min(Math.max(0, product.stock - otherQuantity), 50);
+        const maximum = Math.min(Math.max(0, variantStock - otherQuantity), 50);
         return items.map((line) => getCartLineKey(line) === newLineKey ? { ...line, product, quantity: Math.min(line.quantity + requestedQuantity, maximum) } : line);
       }
       return [...items, { ...newLine, quantity: Math.min(requestedQuantity, availableForVariant) }];
@@ -638,9 +648,13 @@ export default function Home() {
   const changeQuantity = (lineKey: string, delta: number) => setCart((items) => items.flatMap((line) => {
     if (getCartLineKey(line) !== lineKey) return [line];
     const otherVariantQuantity = items.reduce((total, otherLine) => (
-      otherLine.product.id === line.product.id && getCartLineKey(otherLine) !== lineKey ? total + otherLine.quantity : total
+      otherLine.product.id === line.product.id
+        && (hasSizeStock(line.product) ? otherLine.size === line.size : true)
+        && getCartLineKey(otherLine) !== lineKey
+        ? total + otherLine.quantity
+        : total
     ), 0);
-    const maximum = Math.min(Math.max(0, line.product.stock - otherVariantQuantity), 50);
+    const maximum = Math.min(Math.max(0, getProductVariantStock(line.product, line.size) - otherVariantQuantity), 50);
     const next = Math.min(line.quantity + delta, maximum);
     if (next > 0) return [{ ...line, quantity: next }];
     return delta < 0 ? [] : [line];

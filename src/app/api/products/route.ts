@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { usesZohoSizeStock } from "@/lib/product-variants";
 import { createAdminSupabase } from "@/lib/server-auth";
 import { getZohoLowStockThreshold, getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
@@ -97,7 +98,7 @@ export async function GET() {
     const productSizeStock = product.size_stock && typeof product.size_stock === "object" && !Array.isArray(product.size_stock)
       ? product.size_stock as Record<string, number>
       : null;
-    if (product.product_type === "shoe" && productSizeStock) {
+    if (usesZohoSizeStock(product.product_type) && productSizeStock) {
       const size_stock = Object.fromEntries(Object.entries(productSizeStock).map(([size, quantity]) => [
         size,
         (isZohoStockSyncEnabled() && !isZohoSizeStockFresh(product, size))

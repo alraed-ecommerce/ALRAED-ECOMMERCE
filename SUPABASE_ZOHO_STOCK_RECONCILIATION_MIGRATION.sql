@@ -106,7 +106,7 @@ begin
             and (
               nullif(btrim(updates.update_row->>'size'), '') is null
               or (
-                mapped_product.product_type = 'shoe'
+                mapped_product.product_type in ('shoe', 'tshirt', 'shorts', 'socks')
                 and (
                   upper(btrim(mapped_product.zoho_size_skus ->> (updates.update_row->>'size')))
                     = upper(btrim(updates.update_row->>'sku'))
@@ -152,7 +152,9 @@ begin
 
     v_size := nullif(btrim(v_update.update_row->>'size'), '');
     if v_size is not null then
-      if v_product.product_type <> 'shoe' or not (v_size = any(v_product.sizes)) then
+      if v_product.product_type not in ('shoe', 'tshirt', 'shorts', 'socks')
+        or not (v_size = any(v_product.sizes))
+        or upper(btrim(v_product.zoho_size_skus ->> v_size)) <> upper(btrim(v_update.update_row->>'sku')) then
         raise exception using message = 'ZOHO_SIZE_MAPPING_INVALID:' || v_product.id || ':' || v_size;
       end if;
 

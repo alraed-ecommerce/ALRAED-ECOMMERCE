@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
-import { getBrandOptions, getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, normalizeBrand, type CartLine, type StoreProduct } from "@/lib/store-products";
+import { getBrandOptions, getCartLineKey, getProductVariantStock, hasProductOptions, hasSizeStock, isFootwearProduct, mapStoreProduct, normalizeBrand, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
 
 const categories = ["All", "Badminton", "Tennis", "Squash", "Pickleball", "Accessories"];
@@ -268,6 +268,8 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     if (product.stock < 1 || product.stockStatus === "unavailable") return false;
     if ((product.colors.length > 0 && !options.color)
       || ((product.sizes.length > 0 || isFootwearProduct(product)) && !options.size)) return false;
+    const variantStock = getProductVariantStock(product, options.size);
+    if (variantStock < 1) return false;
     let currentCart: CartLine[];
     try {
       currentCart = readCart();
@@ -275,13 +277,17 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
       setCartError(error instanceof Error ? error.message : "Your saved bag could not be read.");
       return false;
     }
-    const newLine = { product, quantity: Math.min(quantity, product.stock, 50), ...options };
+    const newLine = { product, quantity: Math.min(quantity, variantStock, 50), ...options };
     const newLineKey = getCartLineKey(newLine);
     const existing = currentCart.find((line) => getCartLineKey(line) === newLineKey);
     const otherVariantQuantity = currentCart.reduce((total, line) => (
-      line.product.id === product.id && getCartLineKey(line) !== newLineKey ? total + line.quantity : total
+      line.product.id === product.id
+        && (hasSizeStock(product) ? line.size === options.size : getCartLineKey(line) !== newLineKey)
+        && getCartLineKey(line) !== newLineKey
+        ? total + line.quantity
+        : total
     ), 0);
-    const availableForVariant = Math.min(Math.max(0, product.stock - otherVariantQuantity), 50);
+    const availableForVariant = Math.min(Math.max(0, variantStock - otherVariantQuantity), 50);
     if (availableForVariant < 1) return false;
     const nextCart = existing
       ? currentCart.map((line) => getCartLineKey(line) === newLineKey
@@ -302,9 +308,13 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     const nextCart = cart.flatMap((line) => {
       if (getCartLineKey(line) !== lineKey) return [line];
       const otherVariantQuantity = cart.reduce((total, otherLine) => (
-        otherLine.product.id === line.product.id && getCartLineKey(otherLine) !== lineKey ? total + otherLine.quantity : total
+        otherLine.product.id === line.product.id
+          && (hasSizeStock(line.product) ? otherLine.size === line.size : true)
+          && getCartLineKey(otherLine) !== lineKey
+          ? total + otherLine.quantity
+          : total
       ), 0);
-      const maximum = Math.min(Math.max(0, line.product.stock - otherVariantQuantity), 50);
+      const maximum = Math.min(Math.max(0, getProductVariantStock(line.product, line.size) - otherVariantQuantity), 50);
       const quantity = Math.min(line.quantity + delta, maximum);
       if (quantity > 0) return [{ ...line, quantity }];
       return delta < 0 ? [] : [line];

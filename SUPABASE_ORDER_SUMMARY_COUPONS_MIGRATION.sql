@@ -241,7 +241,7 @@ begin
     (v_created ->> 'order_id')::uuid, p_coupon_code, p_checkout_attempt_id
   );
   return v_priced;
-end;
+end;0-
 $$;
 
 create or replace function public.update_checkout_coupon_redemption()
