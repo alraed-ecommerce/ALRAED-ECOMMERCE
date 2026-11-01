@@ -1073,7 +1073,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                         <input value={editingProductColors} onChange={(event) => setEditingProductColors(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Black, White, Red" />
                       </label>}
                       {editingProductType === "other" && <label className="grid gap-2 text-xs font-semibold text-slate-400 sm:col-span-2">Product sizes
-                        <select value={apparelSizeCategories.includes(editingSizeCategory) ? editingSizeCategory : ""} onChange={(event) => {
+                        <select value={editingSizeCategory && apparelSizeCategories.includes(editingSizeCategory) ? editingSizeCategory : ""} onChange={(event) => {
                           const category = event.target.value as SizeCategory | "";
                           changeEditingSizeCategory(category || null);
                         }} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400">
