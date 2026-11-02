@@ -159,6 +159,11 @@ const productCategories = ["Badminton", "Tennis", "Squash", "Accessories"];
 type ProductType = "shoe" | "racquet" | "other";
 type SizeCategory = ShoeSizeCategory | "tshirts" | "shorts" | "socks";
 type ProductSpecification = { label: string; value: string };
+type SizeEditorValues = {
+  stock: Record<string, number>;
+  skus: Record<string, string>;
+  syncedAt: Record<string, string>;
+};
 
 const sizesByCategory: Record<SizeCategory, string[]> = {
   ...shoeSizesByCategory,
@@ -375,9 +380,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [editingProductCategory, setEditingProductCategory] = useState("Badminton");
   const [editingProductType, setEditingProductType] = useState<ProductType>("other");
   const [editingSizeCategory, setEditingSizeCategory] = useState<SizeCategory | null>("mens");
-  const [editingSizeStock, setEditingSizeStock] = useState<Record<string, number>>({});
-  const [editingSizeSkus, setEditingSizeSkus] = useState<Record<string, string>>({});
-  const [editingSizeSyncedAt, setEditingSizeSyncedAt] = useState<Record<string, string>>({});
+  const [editingSizeValuesByCategory, setEditingSizeValuesByCategory] = useState<Partial<Record<SizeCategory, SizeEditorValues>>>({});
   const [editingProductSku, setEditingProductSku] = useState("");
   const [editingZohoProductId, setEditingZohoProductId] = useState("");
   const [editingProductColors, setEditingProductColors] = useState("");
@@ -409,6 +412,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     description: "",
     specifications: [{ label: "", value: "" }] as ProductSpecification[],
   });
+  const [newSizeSkusByCategory, setNewSizeSkusByCategory] = useState<Partial<Record<SizeCategory, Record<string, string>>>>({});
   const [savingProduct, setSavingProduct] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
@@ -425,6 +429,9 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const ordersOnTheWay = orders.filter((order) => order.status === "shipped").length;
   const overdueOrders = getOverdueOrders(orders, now);
   const lowStockProducts = operationsError ? [] : getLowStockProducts(products, lowStockThreshold);
+  const editingSizeValues = editingSizeCategory
+    ? editingSizeValuesByCategory[editingSizeCategory] ?? { stock: {}, skus: {}, syncedAt: {} }
+    : { stock: {}, skus: {}, syncedAt: {} };
 
   const recentlySoldProductIds = useMemo(() => {
     const productIds = new Set(products.map((product) => product.id));
@@ -474,21 +481,12 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     setProductForm((current) => ({
       ...current,
       size_category: sizeCategory,
-      zoho_size_skus: {},
+      zoho_size_skus: newSizeSkusByCategory[sizeCategory] ?? {},
     }));
   };
 
   const changeEditingSizeCategory = (sizeCategory: SizeCategory | null) => {
     setEditingSizeCategory(sizeCategory);
-    if (!sizeCategory) {
-      setEditingSizeStock({});
-      setEditingSizeSkus({});
-      setEditingSizeSyncedAt({});
-      return;
-    }
-    setEditingSizeStock(Object.fromEntries(getSizes(sizeCategory).map((size) => [size, 0])));
-    setEditingSizeSkus({});
-    setEditingSizeSyncedAt({});
   };
 
   const exportStockReport = async () => {
@@ -683,6 +681,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       if (!response.ok) throw new Error(result.error || "Unable to save product.");
 
       setProducts((current) => [result.product, ...current]);
+      setNewSizeSkusByCategory({});
       setProductForm({
         product_type: "",
         size_category: null,
@@ -760,12 +759,17 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       setEditingProductId(null);
       return;
     }
+    const sizeCategory = product.size_category ?? (getProductType(product) === "shoe" ? "mens" : null);
     setEditingProductId(product.id);
     setEditingProductType(getProductType(product));
-    setEditingSizeCategory(product.size_category ?? (getProductType(product) === "shoe" ? "mens" : null));
-    setEditingSizeStock(product.size_stock ?? {});
-    setEditingSizeSkus(product.zoho_size_skus ?? {});
-    setEditingSizeSyncedAt(product.zoho_size_stock_synced_at ?? {});
+    setEditingSizeCategory(sizeCategory);
+    setEditingSizeValuesByCategory(sizeCategory ? {
+      [sizeCategory]: {
+        stock: product.size_stock ?? {},
+        skus: product.zoho_size_skus ?? {},
+        syncedAt: product.zoho_size_stock_synced_at ?? {},
+      },
+    } : {});
     setEditingProductName(product.name);
     setEditingProductCategory(productCategories.includes(product.category) ? product.category : "Accessories");
     setEditingProductSku(product.sku ?? "");
@@ -782,7 +786,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       setAuthError("Enter a product name and valid category.");
       return;
     }
-    if (isZohoSizeProduct(editingProductType, editingSizeCategory) && !Object.values(editingSizeSkus).some((sku) => sku.trim())) {
+    if (isZohoSizeProduct(editingProductType, editingSizeCategory) && !Object.values(editingSizeValues.skus).some((sku) => sku.trim())) {
       setAuthError("Add a Zoho SKU to at least one size. Stock is managed by Zoho.");
       return;
     }
@@ -817,7 +821,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           specifications: specifications.values,
           ...(editingProductType === "shoe"
             ? {
-              zoho_size_skus: editingSizeSkus,
+            zoho_size_skus: editingSizeValues.skus,
             }
           : { sizes: [], unavailable_sizes: [] }),
           is_active: isActive,
@@ -1226,12 +1230,15 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             <div className="space-y-5">
               <section className="space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">1. What are you adding?</h3>
-                <ProductTypeSelector value={productForm.product_type} onChange={(product_type) => setProductForm((current) => ({
-                  ...current,
-                  product_type,
-                  size_category: product_type === "shoe" ? (isShoeSizeCategory(current.size_category) ? current.size_category : "mens") : null,
-                  zoho_size_skus: {},
-                }))} />
+                <ProductTypeSelector value={productForm.product_type} onChange={(product_type) => {
+                  setNewSizeSkusByCategory({});
+                  setProductForm((current) => ({
+                    ...current,
+                    product_type,
+                    size_category: product_type === "shoe" ? (isShoeSizeCategory(current.size_category) ? current.size_category : "mens") : null,
+                    zoho_size_skus: {},
+                  }));
+                }} />
               </section>
               {productForm.product_type && (
                 <>
@@ -1246,7 +1253,11 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                   {productForm.product_type === "other" && <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Product sizes
                     <select value={apparelSizeCategories.includes(productForm.size_category as SizeCategory) ? productForm.size_category! : ""} onChange={(event) => {
                       const category = event.target.value as SizeCategory | "";
-                      setProductForm((current) => ({ ...current, size_category: category || null, zoho_size_skus: {} }));
+                      setProductForm((current) => ({
+                        ...current,
+                        size_category: category || null,
+                        zoho_size_skus: category ? newSizeSkusByCategory[category] ?? {} : {},
+                      }));
                     }} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white">
                       <option value="">No size (racquets & accessories)</option>
                       <option value="tshirts">T-shirts</option>
@@ -1263,10 +1274,18 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       sizeStock={{}}
                       sizeSkus={productForm.zoho_size_skus}
                       sizeSyncedAt={{}}
-                      onChangeSizeSku={(size, sku) => setProductForm((current) => ({
-                        ...current,
-                        zoho_size_skus: { ...current.zoho_size_skus, [size]: sku },
-                      }))}
+                      onChangeSizeSku={(size, sku) => {
+                        const category = productForm.size_category;
+                        if (!category) return;
+                        setProductForm((current) => ({
+                          ...current,
+                          zoho_size_skus: { ...current.zoho_size_skus, [size]: sku },
+                        }));
+                        setNewSizeSkusByCategory((current) => ({
+                          ...current,
+                          [category]: { ...(current[category] ?? {}), [size]: sku },
+                        }));
+                      }}
                       idPrefix="new-size"
                     />
                   )}
@@ -1381,9 +1400,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                           if (productType === editingProductType) return;
                           setEditingProductType(productType);
                           setEditingSizeCategory(productType === "shoe" ? (isShoeSizeCategory(editingSizeCategory) ? editingSizeCategory : "mens") : (editingSizeCategory && apparelSizeCategories.includes(editingSizeCategory) ? editingSizeCategory : productType === "other" ? "tshirts" : null));
-                          setEditingSizeSkus({});
-                          setEditingSizeStock({});
-                          setEditingSizeSyncedAt({});
+                          setEditingSizeValuesByCategory({});
                         }} />
                       </div>
                       <label className="grid gap-2 text-xs font-semibold text-slate-400">
@@ -1425,15 +1442,24 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                           onCategoryChange={changeEditingSizeCategory}
                           sizeCategories={editingProductType === "shoe" ? shoeSizeCategories : [editingSizeCategory]}
                           title={editingProductType === "shoe" ? "Zoho stock by shoe size" : "Zoho stock by apparel size"}
-                          sizeStock={editingSizeStock}
-                          sizeSkus={editingSizeSkus}
-                          sizeSyncedAt={editingSizeSyncedAt}
+                          sizeStock={editingSizeValues.stock}
+                          sizeSkus={editingSizeValues.skus}
+                          sizeSyncedAt={editingSizeValues.syncedAt}
                           onChangeSizeSku={(size, sku) => {
-                            setEditingSizeSkus((current) => ({ ...current, [size]: sku }));
-                            setEditingSizeSyncedAt((current) => {
-                              const next = { ...current };
-                              delete next[size];
-                              return next;
+                            const category = editingSizeCategory;
+                            if (!category) return;
+                            setEditingSizeValuesByCategory((current) => {
+                              const values = current[category] ?? { stock: {}, skus: {}, syncedAt: {} };
+                              const syncedAt = { ...values.syncedAt };
+                              delete syncedAt[size];
+                              return {
+                                ...current,
+                                [category]: {
+                                  ...values,
+                                  skus: { ...values.skus, [size]: sku },
+                                  syncedAt,
+                                },
+                              };
                             });
                           }}
                           idPrefix={`edit-size-${product.id}`}
