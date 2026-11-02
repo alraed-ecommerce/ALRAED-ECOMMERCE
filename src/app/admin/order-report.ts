@@ -11,7 +11,7 @@ export type OrderReportItem = {
 export type OrderReportOrder = {
   id: string;
   customer_name: string;
-  customer_phone: string;
+  customer_phone: string | null;
   city: string | null;
   address: string | null;
   total: number;
@@ -87,7 +87,7 @@ export function createOrderReportWorkbook(orders: OrderReportOrder[]) {
     orderId: order.id,
     createdAt: toExcelDate(order.created_at),
     customer: order.customer_name,
-    phone: order.customer_phone,
+    phone: order.customer_phone || "",
     city: order.city || "",
     address: order.address || "",
     status: order.status.replace(/_/g, " "),

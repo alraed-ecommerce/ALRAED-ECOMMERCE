@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
+import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
+import { ALRAED_WHATSAPP_CONTACT, createWhatsAppOrderConfirmationLink, normalizeWhatsAppPhone } from "@/lib/whatsapp";
 import { getShoeSizes, isShoeSizeCategory, shoeSizeCategories, shoeSizesByCategory, type ShoeSizeCategory } from "@/lib/shoe-sizes";
 import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
@@ -56,7 +57,7 @@ type Product = {
 type Order = {
   id: string;
   customer_name: string;
-  customer_phone: string;
+  customer_phone: string | null;
   city: string | null;
   address: string | null;
   total: number;
@@ -67,6 +68,7 @@ type Order = {
   stripe_payment_method: string | null;
   stripe_paid_at: string | null;
   zoho_invoice_recorded_at?: string | null;
+  whatsapp_order_updates_opt_in: boolean;
   order_items?: Array<{ id: number; product_id?: number | null; product_name: string; quantity: number; unit_price: number }>;
 };
 
@@ -940,7 +942,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                   <div>
                     <div className="text-xs font-bold uppercase tracking-[0.2em] text-sky-300">Order #{order.id.slice(0, 8).toUpperCase()}</div>
                     <div className="mt-1 text-lg font-bold text-white">{order.customer_name}</div>
-                    <div className="text-sm text-slate-400">{order.customer_phone} · {order.city || "City not set"}</div>
+                    <div className="text-sm text-slate-400">{order.customer_phone || "Phone unavailable"} · {order.city || "City not set"}</div>
                   </div>
 
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -968,7 +970,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                   </div>
                 )}
 
-                {(order.status === "paid" || order.stripe_payment_intent_id || order.stripe_paid_at) && (
+                {(order.status === "paid" || order.status === "processing" || order.status === "shipped" || order.status === "delivered" || order.stripe_payment_intent_id || order.stripe_paid_at) && (
                   <div className="mt-3 grid gap-1 rounded-xl border border-emerald-900/60 bg-emerald-950/30 p-3 text-sm text-emerald-100">
                     <strong>Payment confirmed{order.stripe_payment_method ? ` · ${order.stripe_payment_method}` : ""}</strong>
                     {order.stripe_paid_at && <span className="text-xs text-emerald-200/70">Paid {new Date(order.stripe_paid_at).toLocaleString()}</span>}
@@ -978,19 +980,60 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
 
                 {(order.status === "paid" || order.status === "processing" || order.status === "shipped" || order.status === "delivered") && (
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-900/60 bg-sky-950/20 p-3 text-sm text-sky-100">
-                    <span>{order.zoho_invoice_recorded_at
+                    <span className="min-w-[220px] flex-1">{order.zoho_invoice_recorded_at
                       ? `Zoho invoice recorded ${new Date(order.zoho_invoice_recorded_at).toLocaleString()}`
                       : "After creating this order’s invoice manually in Zoho, record it here to prevent stock being deducted twice."}</span>
-                    {!order.zoho_invoice_recorded_at && (
-                      <button
-                        type="button"
-                        onClick={() => void recordZohoInvoice(order.id)}
-                        disabled={busyOrderId === order.id}
-                        className="rounded-lg border border-sky-700 px-3 py-2 font-semibold text-sky-100 transition hover:bg-sky-900/60 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {busyOrderId === order.id ? "Recording…" : "Record Zoho invoice"}
-                      </button>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!order.zoho_invoice_recorded_at && (
+                        <button
+                          type="button"
+                          onClick={() => void recordZohoInvoice(order.id)}
+                          disabled={busyOrderId === order.id}
+                          className="rounded-lg border border-sky-700 px-3 py-2 font-semibold text-sky-100 transition hover:bg-sky-900/60 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {busyOrderId === order.id ? "Recording…" : "Record Zoho invoice"}
+                        </button>
+                      )}
+                      {(() => {
+                        const whatsappHref = createWhatsAppOrderConfirmationLink(order);
+                        const recipientIsValid = Boolean(order.customer_phone && normalizeWhatsAppPhone(order.customer_phone));
+                        const canOpenWhatsApp = order.whatsapp_order_updates_opt_in && Boolean(whatsappHref);
+                        const unavailableReason = !order.whatsapp_order_updates_opt_in
+                          ? "Customer has not opted in to WhatsApp order updates."
+                          : !recipientIsValid
+                            ? "A valid customer WhatsApp number is not available."
+                            : "Complete order items are not available for a confirmation message.";
+
+                        return canOpenWhatsApp ? (
+                          <a
+                            href={whatsappHref ?? undefined}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 font-semibold text-emerald-950 transition hover:bg-emerald-400"
+                            aria-label={`Open WhatsApp confirmation for ${order.customer_name}`}
+                          >
+                            <MessageCircle size={16} aria-hidden="true" />
+                            WhatsApp confirmation
+                          </a>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled
+                              title={unavailableReason}
+                              className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-emerald-900 px-3 py-2 font-semibold text-emerald-200/50"
+                            >
+                              <MessageCircle size={16} aria-hidden="true" />
+                              WhatsApp unavailable
+                            </button>
+                            <span className="text-xs text-amber-200">{unavailableReason}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <p className="basis-full text-xs text-slate-400">
+                      WhatsApp opens a ready-to-review message; send it from the admin account ({ALRAED_WHATSAPP_CONTACT}).
+                    </p>
                   </div>
                 )}
 

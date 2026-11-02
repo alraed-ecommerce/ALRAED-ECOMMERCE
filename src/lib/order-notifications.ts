@@ -1,4 +1,5 @@
 import type { createAdminSupabase } from "@/lib/server-auth";
+import { normalizeWhatsAppPhone } from "./whatsapp.ts";
 
 type NotificationChannel = "email" | "whatsapp";
 type NotificationStatus = "sent" | "skipped" | "failed";
@@ -39,15 +40,6 @@ const amount = (total: number) => new Intl.NumberFormat("en-AE", {
   currency: "AED",
   maximumFractionDigits: 2,
 }).format(total);
-
-function normalizeWhatsAppPhone(phone: string) {
-  const trimmed = phone.trim();
-  let digits = trimmed.replace(/\D/g, "");
-  if (trimmed.startsWith("00")) digits = digits.slice(2);
-  else if (!trimmed.startsWith("+") && digits.length === 9) digits = `971${digits}`;
-  else if (!trimmed.startsWith("+") && digits.startsWith("0") && digits.length === 10) digits = `971${digits.slice(1)}`;
-  return /^\d{8,15}$/.test(digits) ? digits : null;
-}
 
 async function finishNotification(
   supabase: NotificationStore,

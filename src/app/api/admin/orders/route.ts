@@ -21,14 +21,33 @@ export async function GET(request: Request) {
 
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, zoho_invoice_recorded_at, order_items(id, product_id, product_name, quantity, unit_price)")
+      .select("id, user_id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, zoho_invoice_recorded_at, order_items(id, product_id, product_name, quantity, unit_price)")
       .order("created_at", { ascending: false });
 
     if (error?.code === "42703") {
       return NextResponse.json({ error: "Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql and SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql in Supabase to enable order and stock details." }, { status: 503 });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ orders: orders ?? [] });
+
+    const userIds = [...new Set((orders ?? []).map((order) => order.user_id).filter((id): id is string => Boolean(id)))];
+    const { data: profiles, error: profilesError } = userIds.length
+      ? await supabase.from("profiles").select("id, whatsapp_order_updates_opt_in").in("id", userIds)
+      : { data: [], error: null };
+    if (profilesError) {
+      console.error("Unable to load WhatsApp consent for admin orders.", profilesError.message);
+      if (profilesError.code === "42703") {
+        return NextResponse.json({ error: "Run SUPABASE_ORDER_NOTIFICATION_MIGRATION.sql to enable WhatsApp consent checks." }, { status: 503 });
+      }
+      return NextResponse.json({ error: "Unable to load customer WhatsApp preferences for orders." }, { status: 500 });
+    }
+
+    const whatsappConsentByUserId = new Map((profiles ?? []).map((profile) => [profile.id, profile.whatsapp_order_updates_opt_in === true]));
+    return NextResponse.json({
+      orders: (orders ?? []).map(({ user_id, ...order }) => ({
+        ...order,
+        whatsapp_order_updates_opt_in: user_id ? whatsappConsentByUserId.get(user_id) === true : false,
+      })),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
     return NextResponse.json({ error: message }, { status: message === "Access denied" ? 403 : 401 });
