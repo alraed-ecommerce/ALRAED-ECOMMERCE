@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { getStripe } from "@/lib/stripe";
 import { toFils } from "@/lib/checkout-pricing";
-import { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
+import { getZohoStockStatus, isZohoSizeStockSynced, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type CheckoutOrder = {
   order_id: string;
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
         const product = checkoutProductsById.get(item.product_id);
         const usesSizeSkus = Boolean(product && (product.product_type === "shoe" || Object.keys(product.zoho_size_skus ?? {}).length > 0));
         const validStock = product && (usesSizeSkus
-          ? Boolean(item.size && isZohoSizeStockFresh(product, item.size))
+          ? Boolean(item.size && isZohoSizeStockSynced(product, item.size))
           : getZohoStockStatus(product) !== "unavailable");
         if (!validStock) {
           return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });

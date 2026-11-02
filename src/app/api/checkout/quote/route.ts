@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { parseCheckoutCart } from "@/lib/checkout-cart";
 import { calculateCheckoutTotals, toFils, validateCouponEligibility, type CouponForValidation } from "@/lib/checkout-pricing";
-import { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
+import { getZohoStockStatus, isZohoSizeStockSynced, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 type ProductRow = {
   id: number;
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
       const hasSizeMappings = Object.keys(zohoStockProduct?.zoho_size_skus ?? {}).length > 0;
       const usesSizeSkus = isShoe || hasSizeMappings;
       if (isZohoStockSyncEnabled() && (usesSizeSkus
-        ? !cartItem.size || !zohoStockProduct || !isZohoSizeStockFresh(zohoStockProduct, cartItem.size)
+        ? !cartItem.size || !zohoStockProduct || !isZohoSizeStockSynced(zohoStockProduct, cartItem.size)
         : !zohoStockProduct || getZohoStockStatus(zohoStockProduct) === "unavailable")) {
         return NextResponse.json({ error: "Stock for one or more items could not be verified. Please try again later." }, { status: 409 });
       }

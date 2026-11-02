@@ -798,7 +798,7 @@ export default function Home() {
           <p className="ar-hero-description">{campaign.description}</p>
           <Link className="ar-button ar-button-light" href={campaign.href ?? "/shop"}>{campaign.cta}<ArrowRight size={16} /></Link>
         </div>
-        <div className="ar-hero-controls" aria-label="Campaign slides">{visibleCampaigns.map((item, index) => <button className={index === activeCampaignIndex ? "is-active" : ""} type="button" key={item.eyebrow} aria-label={`Show campaign ${index + 1} of ${visibleCampaigns.length}`} aria-pressed={index === activeCampaignIndex} onClick={() => showCampaign(index)} />)}</div>
+        <div className="ar-hero-controls" aria-label="Campaign slides">{visibleCampaigns.map((item, index) => <button className={index === activeCampaignIndex ? "is-active" : ""} type="button" key={`${item.eyebrow}-${index}`} aria-label={`Show campaign ${index + 1} of ${visibleCampaigns.length}`} aria-pressed={index === activeCampaignIndex} onClick={() => showCampaign(index)} />)}</div>
         <a className="ar-hero-scroll" href="#service"><ArrowDown size={14} /> SCROLL TO EXPLORE</a>
       </section>}
 

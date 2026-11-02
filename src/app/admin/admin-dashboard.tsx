@@ -3,21 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
+import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
+import InsightsDashboard from "./insights-dashboard";
 
-type AdminSection = "products" | "orders" | "posters" | "coupons";
+type AdminSection = "insights" | "products" | "orders" | "posters" | "coupons";
 
 const adminSections: Array<{ id: AdminSection; href: string; label: string; description: string; Icon: typeof Package }> = [
+  { id: "insights", href: "/admin/insights", label: "Insights", description: "Sales and operations", Icon: BarChart3 },
   { id: "products", href: "/admin/products", label: "Products", description: "Catalog and inventory", Icon: Package },
   { id: "orders", href: "/admin/orders", label: "Orders", description: "Customer purchases", Icon: ClipboardList },
   { id: "posters", href: "/admin/posters", label: "Campaigns", description: "Homepage content", Icon: PanelsTopLeft },
   { id: "coupons", href: "/admin/coupons", label: "Coupons", description: "Discount codes", Icon: Tag },
 ];
 const sectionIntros: Record<AdminSection, string> = {
+  insights: "Track sales performance, customer trends, order operations, and inventory health.",
   products: "Manage product listings, pricing, and Zoho inventory mappings.",
   orders: "Review customer purchases and keep fulfillment moving.",
   posters: "Create and organize the campaigns featured on your homepage.",
@@ -794,6 +797,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
 
         {section === "posters" && user && <HomeCampaignManager user={user} />}
         {section === "coupons" && user && <CouponManager user={user} />}
+        {section === "insights" && user && <InsightsDashboard user={user} />}
 
         {section === "orders" && <section id="customer-orders" className="mb-8 scroll-mt-6 rounded-3xl border border-sky-400/20 bg-slate-900 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

@@ -46,27 +46,29 @@ export function isZohoStockFresh(
   return Number.isFinite(timestamp) && age >= 0 && age <= maxAgeMs;
 }
 
+export function isZohoStockSynced(syncedAt: string | null | undefined, now = Date.now()) {
+  if (!syncedAt) return false;
+  const timestamp = Date.parse(syncedAt);
+  return Number.isFinite(timestamp) && timestamp <= now;
+}
+
 export function getZohoStockStatus(product: ZohoStockProduct, now = Date.now()): ZohoStockStatus {
   if (!isZohoStockSyncEnabled()) return "manual";
 
   const sizeMappings = Object.entries(product.zoho_size_skus ?? {}).filter(([, sku]) => sku.trim());
   if (product.product_type === "shoe" || sizeMappings.length > 0) {
     const mappings = sizeMappings;
-    return mappings.some(([size]) => isZohoSizeStockFresh(product, size, now)) ? "verified" : "unavailable";
+    return mappings.some(([size]) => isZohoSizeStockSynced(product, size, now)) ? "verified" : "unavailable";
   }
 
   if (!(product.sku?.trim() || product.zoho_product_id?.trim())) return "unavailable";
-  return isZohoStockFresh(product.zoho_stock_synced_at, getZohoStockMaxAgeMs(), now)
+  return isZohoStockSynced(product.zoho_stock_synced_at, now)
     ? "verified"
     : "unavailable";
 }
 
-export function isZohoSizeStockFresh(product: ZohoStockProduct, size: string, now = Date.now()) {
+export function isZohoSizeStockSynced(product: ZohoStockProduct, size: string, now = Date.now()) {
   const sku = product.zoho_size_skus?.[size];
   if (!sku?.trim()) return false;
-  return isZohoStockFresh(
-    product.zoho_size_stock_synced_at?.[size],
-    getZohoStockMaxAgeMs(),
-    now,
-  );
+  return isZohoStockSynced(product.zoho_size_stock_synced_at?.[size], now);
 }

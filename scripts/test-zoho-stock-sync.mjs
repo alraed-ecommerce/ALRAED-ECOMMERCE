@@ -23,7 +23,7 @@ process.env.ZOHO_ACCOUNTS_URL = "https://accounts.zoho.com";
 process.env.ZOHO_API_URL = "https://www.zohoapis.com";
 
 const { getZohoStockUpdates, ZohoInventoryError } = await import("../src/lib/zoho-inventory.ts");
-const { getZohoStockStatus, isZohoSizeStockFresh, isZohoStockFresh } = await import("../src/lib/zoho-stock-policy.ts");
+const { getZohoStockStatus, isZohoSizeStockSynced, isZohoStockFresh } = await import("../src/lib/zoho-stock-policy.ts");
 
 test.after(() => {
   globalThis.fetch = originalFetch;
@@ -235,7 +235,7 @@ test("fails safely when a configured location has no stock details", async () =>
   await assert.rejects(getZohoStockUpdates([{ sku: "SKU-1" }]), ZohoInventoryError);
 });
 
-test("blocks Zoho-managed stock when mappings or sync timestamps are missing or stale", () => {
+test("keeps the last successfully synced Zoho stock available until a later sync", () => {
   process.env.ZOHO_STOCK_MAX_AGE_SECONDS = "900";
   const now = Date.parse("2026-01-01T12:00:00.000Z");
   assert.equal(isZohoStockFresh("2026-01-01T11:50:00.000Z", 900_000, now), true);
@@ -246,14 +246,14 @@ test("blocks Zoho-managed stock when mappings or sync timestamps are missing or 
     name: "Racquet",
     product_type: "racquet",
     sku: "R-1",
-    zoho_stock_synced_at: "2026-01-01T11:50:00.000Z",
+    zoho_stock_synced_at: "2026-01-01T11:40:00.000Z",
   }, now), "verified");
-  assert.equal(isZohoSizeStockFresh({
+  assert.equal(isZohoSizeStockSynced({
     product_type: "shoe",
     zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
-    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:50:00.000Z" },
+    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:40:00.000Z" },
   }, "UK 7", now), true);
-  assert.equal(isZohoSizeStockFresh({
+  assert.equal(isZohoSizeStockSynced({
     product_type: "shoe",
     zoho_size_skus: { "UK 7": "SKU-7" },
     zoho_size_stock_synced_at: {},
@@ -262,13 +262,13 @@ test("blocks Zoho-managed stock when mappings or sync timestamps are missing or 
     name: "Shoe",
     product_type: "shoe",
     zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
-    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:50:00.000Z" },
+    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:40:00.000Z" },
   }, now), "verified");
   assert.equal(getZohoStockStatus({
     name: "T-shirt",
     product_type: "other",
     zoho_size_skus: { S: "TS-S", M: "TS-M" },
-    zoho_size_stock_synced_at: { S: "2026-01-01T11:50:00.000Z" },
+    zoho_size_stock_synced_at: { S: "2026-01-01T11:40:00.000Z" },
   }, now), "verified");
   assert.equal(getZohoStockStatus({
     name: "Socks",

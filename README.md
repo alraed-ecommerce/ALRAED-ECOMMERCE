@@ -39,9 +39,13 @@ Checkout uses Stripe-hosted Checkout in AED. Customers sign in, save a phone num
 
 ### Database setup
 
-In the Supabase SQL Editor, run `SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql` after the existing account and order-safety migrations (and after `SUPABASE_ZOHO_STOCK_MIGRATION.sql` if Zoho stock sync is enabled). Then run the latest `SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql` and `SUPABASE_ORDER_SUMMARY_COUPONS_MIGRATION.sql`. If Zoho is enabled, also apply `SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql` after both the Stripe checkout and Zoho stock migrations. The cart's **Proceed to payment** button opens a server-priced order summary first, showing each selected product and variant, applicable delivery and handling fees, and any active coupon discount. Orders with a product subtotal below AED 200 include AED 10 delivery and AED 2 handling; both fees are waived at AED 200 and above. The final button creates the existing Stripe Checkout session only after the server recalculates and validates the order. Manage fixed AED coupons in the authorized admin dashboard. Shoe stock is mapped to a separate Zoho SKU for each size; Zoho sync is read-only and mapped size quantities cannot be edited in Admin. Unmapped or stale sizes remain unavailable. After manually creating a Zoho invoice for a paid website order, mark it as recorded in Admin; this is a manual tracking step, not automated invoice creation.
+In the Supabase SQL Editor, run `SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql` after the existing account and order-safety migrations (and after `SUPABASE_ZOHO_STOCK_MIGRATION.sql` if Zoho stock sync is enabled). Then run the latest `SUPABASE_PRODUCT_VARIANTS_MIGRATION.sql` and `SUPABASE_ORDER_SUMMARY_COUPONS_MIGRATION.sql`. If Zoho is enabled, also apply `SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql` after both the Stripe checkout and Zoho stock migrations. The cart's **Proceed to payment** button opens a server-priced order summary first, showing each selected product and variant, applicable delivery and handling fees, and any active coupon discount. Orders with a product subtotal below AED 200 include AED 10 delivery and AED 2 handling; both fees are waived at AED 200 and above. The final button creates the existing Stripe Checkout session only after the server recalculates and validates the order. Manage fixed AED coupons in the authorized admin dashboard. Shoe stock is mapped to a separate Zoho SKU for each size; Zoho sync is read-only and mapped size quantities cannot be edited in Admin. Unmapped or never-synced sizes remain unavailable; previously synced stock stays available until a successful sync updates it. After manually creating a Zoho invoice for a paid website order, mark it as recorded in Admin; this is a manual tracking step, not automated invoice creation.
 
-Run `npm run test:checkout-pricing` to check currency-fils arithmetic, coupon eligibility and cart validation. Run `npm run test:zoho-stock-sync` to test Zoho SKU matching, per-size shoe sync, and stock freshness rules.
+Run `npm run test:checkout-pricing` to check currency-fils arithmetic, coupon eligibility and cart validation. Run `npm run test:zoho-stock-sync` to test Zoho SKU matching, per-size shoe sync, and stock persistence after the sync-age alert threshold.
+
+### Admin business insights
+
+Authorized admins can open **Admin → Insights** to review paid revenue, paid order count, average order value, repeat-customer rate, revenue trend, best-selling products, sales by category and city, current fulfillment workload, and inventory health. The 7-, 30-, and 90-day filters apply to sales and period-based order metrics. Inventory and open-order counts are current snapshots. Revenue uses the final order total saved in Supabase; products without a Zoho mapping and products with low or empty stock are highlighted for follow-up. Insights are aggregated on the server and require the same Firebase admin authorization as the rest of the admin workspace.
 
 ### Local test setup
 
@@ -52,12 +56,13 @@ Run `npm run test:checkout-pricing` to check currency-fils arithmetic, coupon el
 5. Add an in-stock product to the bag and proceed to payment. In Stripe Checkout, use test card `4242 4242 4242 4242`, a future expiry date, any CVC, and any postal code. Test cancellation and session expiry too.
 6. Confirm the order is paid at `/account/orders` and in the admin dashboard. Verify that the exact item quantities were deducted once from Supabase; replayed webhook events must not deduct them again.
 
-### Vercel and live setup
+### Hostinger deployment and live setup
 
-1. Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `NEXT_PUBLIC_SITE_URL` in Vercel Project Settings → Environment Variables. Initially use test-mode values and the production site URL, for example `https://your-domain.example`.
-2. In Stripe Dashboard, create a webhook endpoint for `https://your-domain.example/api/checkout/webhook`, select `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed`, then copy its signing secret into Vercel as `STRIPE_WEBHOOK_SECRET`.
-3. Deploy/redeploy after adding the variables. Run a full test-mode order against the deployed site and verify both the customer order history and admin order details.
-4. Before accepting live payments, complete Stripe account verification, confirm with Stripe and ADCB that the intended payout account is acceptable, switch to live Stripe keys, and create a separate live-mode webhook endpoint and signing secret. Keep test and live credentials separate.
+Deploy this as a Next.js **Web App**, not a static site. In Hostinger, connect the GitHub repository and deploy the intended branch (currently `main`) with the Next.js preset, Node.js 22.x, npm, `npm run build`, and `.next` as the output directory. Set the required variables from `.env.example` in Hostinger's environment-variable settings before building; keep secrets server-side and out of Git. The app continues to use Supabase, Firebase, Stripe, and Zoho without moving their data.
+
+Start with the Hostinger temporary HTTPS domain and Stripe test-mode keys. Set `NEXT_PUBLIC_SITE_URL` to that temporary domain, add it to Firebase Authentication's authorized domains, and create a Stripe **test-mode** webhook at `<temporary-domain>/api/checkout/webhook` for `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed`. Store that endpoint's signing secret as `STRIPE_WEBHOOK_SECRET` in Hostinger and redeploy. Verify Google sign-in, admin access, image upload, Zoho stock sync, test checkout, and successful webhook delivery before changing the live domain.
+
+After staging passes, attach the production domain to the Hostinger Web App, enable HTTPS, update `NEXT_PUBLIC_SITE_URL` and Firebase's authorized domains, and redeploy. Preserve existing DNS records used for email. Before accepting live payments, complete Stripe account verification, confirm with Stripe and ADCB that the intended payout account is acceptable, switch to live Stripe keys, and create a separate live-mode webhook endpoint and signing secret. Keep test and live credentials separate. Hostinger deployments from GitHub occur only when a push is made to a branch configured for deployment.
 
 The admin dashboard displays the confirmed payment method, paid time, and Stripe PaymentIntent reference. The application does not store card numbers or CVCs.
 
@@ -87,8 +92,6 @@ Customer notifications run only from the signed Stripe webhook after the order h
 
    Customers must explicitly opt in under Account → Personal details before WhatsApp messages are sent. If WhatsApp is not configured, delivery stays pending for a later webhook retry; if a customer has not opted in, only WhatsApp delivery is skipped. Payment confirmation and email behavior are unaffected. A WhatsApp API failure is recorded independently and will not cause an already-sent email to be sent again.
 
-## Deploy on Vercel
+## Next.js deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See the Hostinger deployment steps above. For framework-specific behavior, refer to the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying).

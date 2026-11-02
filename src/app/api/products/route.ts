@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/server-auth";
-import { getZohoLowStockThreshold, getZohoStockStatus, isZohoSizeStockFresh, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
+import { getZohoLowStockThreshold, getZohoStockStatus, isZohoSizeStockSynced, isZohoStockSyncEnabled } from "@/lib/zoho-stock-policy";
 
 export async function GET() {
   const supabase = createAdminSupabase();
@@ -101,7 +101,7 @@ export async function GET() {
       const sizes = Array.isArray(product.sizes) ? product.sizes : Object.keys(productSizeStock);
       const size_stock = Object.fromEntries(sizes.map((size) => [
         size,
-        (isZohoStockSyncEnabled() && !isZohoSizeStockFresh(product, size))
+        (isZohoStockSyncEnabled() && !isZohoSizeStockSynced(product, size))
           || legacySizeReservations.has(productId)
           ? 0
           : Math.max(0, Number(productSizeStock[size] ?? 0) - (reservedBySize.get(`${productId}:${size}`) ?? 0)),
