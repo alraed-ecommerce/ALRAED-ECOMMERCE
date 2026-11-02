@@ -42,3 +42,21 @@ test("store product mapping preserves customer-facing description and specificat
   assert.equal(product.description, "A lightweight racquet.");
   assert.deepEqual(product.specifications, { Weight: "4U", Material: "Graphite" });
 });
+
+test("store product mapping retains EU shoe sizes and synced per-size stock", () => {
+  const product = mapStoreProduct({
+    id: 9,
+    name: "Junior court shoe",
+    category: "Badminton",
+    product_type: "shoe",
+    size_category: "junior",
+    sizes: ["EU 32", "EU 33"],
+    size_stock: { "EU 32": 2, "EU 33": 0 },
+    unavailable_sizes: ["EU 33"],
+  });
+
+  assert.equal(product.sizeCategory, "junior");
+  assert.deepEqual(product.sizes, ["EU 32", "EU 33"]);
+  assert.deepEqual(product.sizeStock, { "EU 32": 2, "EU 33": 0 });
+  assert.equal(product.stock, 2);
+});

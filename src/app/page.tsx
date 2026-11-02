@@ -45,7 +45,7 @@ function isCartLine(value: unknown): value is CartLine {
     && typeof item.id === "number"
     && Number.isSafeInteger(item.id)
     && (item.productType === undefined || item.productType === "shoe" || item.productType === "racquet" || item.productType === "other")
-    && (item.sizeCategory === undefined || item.sizeCategory === null || item.sizeCategory === "mens" || item.sizeCategory === "womens" || item.sizeCategory === "kids")
+    && (item.sizeCategory === undefined || item.sizeCategory === null || item.sizeCategory === "junior" || item.sizeCategory === "mens" || item.sizeCategory === "womens" || item.sizeCategory === "kids")
     && typeof item.name === "string"
     && typeof item.brand === "string"
     && typeof item.category === "string"

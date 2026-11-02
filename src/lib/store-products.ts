@@ -1,7 +1,7 @@
 export type StoreProduct = {
   id: number;
   productType: "shoe" | "racquet" | "other";
-  sizeCategory: "mens" | "womens" | "kids" | "tshirts" | "shorts" | "socks" | null;
+  sizeCategory: "junior" | "mens" | "womens" | "kids" | "tshirts" | "shorts" | "socks" | null;
   name: string;
   brand: string;
   category: string;
@@ -78,7 +78,7 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
   return {
     id: Number(row.id),
     productType,
-    sizeCategory: row.size_category === "mens" || row.size_category === "womens" || row.size_category === "kids" || row.size_category === "tshirts" || row.size_category === "shorts" || row.size_category === "socks" ? row.size_category : null,
+    sizeCategory: row.size_category === "junior" || row.size_category === "mens" || row.size_category === "womens" || row.size_category === "kids" || row.size_category === "tshirts" || row.size_category === "shorts" || row.size_category === "socks" ? row.size_category : null,
     name: String(row.name ?? ""),
     brand: String(row.brand ?? ""),
     category: String(row.category ?? ""),

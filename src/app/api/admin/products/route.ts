@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
+import { shoeSizeCategories, shoeSizesByCategory } from "@/lib/shoe-sizes";
 
 const ensureAdmin = async (request: Request) => {
   const identity = await getFirebaseIdentity(request);
@@ -15,13 +16,10 @@ const ensureAdmin = async (request: Request) => {
 
 const allowedCategories = ["Badminton", "Tennis", "Squash", "Accessories"];
 const allowedProductTypes = ["shoe", "racquet", "other"] as const;
-const shoeSizeCategories = ["mens", "womens", "kids"] as const;
 const apparelSizeCategories = ["tshirts", "shorts", "socks"] as const;
 const allowedSizeCategories = [...shoeSizeCategories, ...apparelSizeCategories] as const;
 const sizeOptionsByCategory: Record<(typeof allowedSizeCategories)[number], string[]> = {
-  mens: Array.from({ length: 14 }, (_, index) => `UK ${index + 2}`),
-  womens: Array.from({ length: 10 }, (_, index) => `UK ${index + 2}`),
-  kids: Array.from({ length: 10 }, (_, index) => `UK ${index + 2}`),
+  ...shoeSizesByCategory,
   tshirts: ["XS", "S", "M", "L", "XL", "XXL", "XXXL"],
   shorts: ["S", "M", "L", "XL", "XLL"],
   socks: ["Small", "Medium", "Large"],

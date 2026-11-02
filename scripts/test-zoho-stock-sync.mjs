@@ -109,8 +109,8 @@ test("matches by stable Zoho item ID even when the Zoho SKU changes", async () =
 
 test("syncs each shoe size from its own Zoho SKU and preserves size mapping", async () => {
   const items = [
-    { item_id: "shoe-item-7", sku: "SHOE-UK7-RENAMED", locations: [{ location_id: "location-1", location_available_stock: 3 }] },
-    { item_id: "shoe-item-8", sku: "SHOE-UK8", locations: [{ location_id: "location-1", location_available_stock: 6 }] },
+    { item_id: "shoe-item-36", sku: "SHOE-EU36-RENAMED", locations: [{ location_id: "location-1", location_available_stock: 3 }] },
+    { item_id: "shoe-item-37", sku: "SHOE-EU37", locations: [{ location_id: "location-1", location_available_stock: 6 }] },
     { item_id: "shoe-root-item", sku: "SHOE-AGGREGATE", locations: [{ location_id: "location-1", location_available_stock: 100 }] },
   ];
   globalThis.fetch = async (input) => {
@@ -133,12 +133,12 @@ test("syncs each shoe size from its own Zoho SKU and preserves size mapping", as
       product_type: "shoe",
       sku: "SHOE-AGGREGATE",
       zoho_product_id: "shoe-root-item",
-      zoho_size_skus: { "UK 7": "SHOE-UK7", "UK 8": "SHOE-UK8" },
-      zoho_size_item_ids: { "UK 7": "shoe-item-7" },
+      zoho_size_skus: { "EU 36": "SHOE-EU36", "EU 37": "SHOE-EU37" },
+      zoho_size_item_ids: { "EU 36": "shoe-item-36" },
     }]),
     [
-      { sku: "SHOE-UK7", zoho_product_id: "shoe-item-7", stock: 3, product_id: 42, size: "UK 7" },
-      { sku: "SHOE-UK8", zoho_product_id: "shoe-item-8", stock: 6, product_id: 42, size: "UK 8" },
+      { sku: "SHOE-EU36", zoho_product_id: "shoe-item-36", stock: 3, product_id: 42, size: "EU 36" },
+      { sku: "SHOE-EU37", zoho_product_id: "shoe-item-37", stock: 6, product_id: 42, size: "EU 37" },
     ],
   );
 });
@@ -147,19 +147,19 @@ test("syncs all warehouses assigned to configured Zoho locations by warehouse ID
   const previousLocationIds = process.env.ZOHO_LOCATION_IDS;
   process.env.ZOHO_LOCATION_IDS = "location-1,location-2,location-3";
   const items = [
-    { item_id: "shoe-item-7", sku: "SHOE-UK7", warehouses: [
+    { item_id: "shoe-item-36", sku: "SHOE-EU36", warehouses: [
       { warehouse_id: "warehouse-madinat", warehouse_available_stock: 2 },
       { warehouse_id: "warehouse-office", warehouse_available_stock: 1 },
       { warehouse_id: "warehouse-racket", warehouse_available_stock: 0 },
       { warehouse_id: "warehouse-internal", warehouse_available_stock: 3 },
     ] },
-    { item_id: "shoe-item-8", sku: "SHOE-UK8", warehouses: [
+    { item_id: "shoe-item-37", sku: "SHOE-EU37", warehouses: [
       { warehouse_id: "warehouse-madinat", warehouse_available_stock: 1 },
       { warehouse_id: "warehouse-office", warehouse_available_stock: 0 },
       { warehouse_id: "warehouse-racket", warehouse_available_stock: 2 },
       { warehouse_id: "warehouse-internal", warehouse_available_stock: 0 },
     ] },
-    { item_id: "shoe-item-9", sku: "SHOE-UK9", warehouses: [
+    { item_id: "shoe-item-38", sku: "SHOE-EU38", warehouses: [
       { warehouse_id: "warehouse-madinat", warehouse_available_stock: 1 },
       { warehouse_id: "warehouse-office", warehouse_available_stock: 2 },
       { warehouse_id: "warehouse-racket", warehouse_available_stock: 0 },
@@ -196,12 +196,12 @@ test("syncs all warehouses assigned to configured Zoho locations by warehouse ID
         id: 43,
         product_type: "shoe",
         sku: null,
-        zoho_size_skus: { "UK 7": "SHOE-UK7", "UK 8": "SHOE-UK8", "UK 9": "SHOE-UK9" },
+        zoho_size_skus: { "EU 36": "SHOE-EU36", "EU 37": "SHOE-EU37", "EU 38": "SHOE-EU38" },
       }]),
       [
-        { sku: "SHOE-UK7", zoho_product_id: "shoe-item-7", stock: 6, product_id: 43, size: "UK 7" },
-        { sku: "SHOE-UK8", zoho_product_id: "shoe-item-8", stock: 3, product_id: 43, size: "UK 8" },
-        { sku: "SHOE-UK9", zoho_product_id: "shoe-item-9", stock: 4, product_id: 43, size: "UK 9" },
+        { sku: "SHOE-EU36", zoho_product_id: "shoe-item-36", stock: 6, product_id: 43, size: "EU 36" },
+        { sku: "SHOE-EU37", zoho_product_id: "shoe-item-37", stock: 3, product_id: 43, size: "EU 37" },
+        { sku: "SHOE-EU38", zoho_product_id: "shoe-item-38", stock: 4, product_id: 43, size: "EU 38" },
       ],
     );
   } finally {
@@ -250,19 +250,19 @@ test("keeps the last successfully synced Zoho stock available until a later sync
   }, now), "verified");
   assert.equal(isZohoSizeStockSynced({
     product_type: "shoe",
-    zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
-    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:40:00.000Z" },
-  }, "UK 7", now), true);
+    zoho_size_skus: { "EU 36": "SKU-36", "EU 37": "SKU-37" },
+    zoho_size_stock_synced_at: { "EU 36": "2026-01-01T11:40:00.000Z" },
+  }, "EU 36", now), true);
   assert.equal(isZohoSizeStockSynced({
     product_type: "shoe",
-    zoho_size_skus: { "UK 7": "SKU-7" },
+    zoho_size_skus: { "EU 36": "SKU-36" },
     zoho_size_stock_synced_at: {},
-  }, "UK 7", now), false);
+  }, "EU 36", now), false);
   assert.equal(getZohoStockStatus({
     name: "Shoe",
     product_type: "shoe",
-    zoho_size_skus: { "UK 7": "SKU-7", "UK 8": "SKU-8" },
-    zoho_size_stock_synced_at: { "UK 7": "2026-01-01T11:40:00.000Z" },
+    zoho_size_skus: { "EU 36": "SKU-36", "EU 37": "SKU-37" },
+    zoho_size_stock_synced_at: { "EU 36": "2026-01-01T11:40:00.000Z" },
   }, now), "verified");
   assert.equal(getZohoStockStatus({
     name: "T-shirt",

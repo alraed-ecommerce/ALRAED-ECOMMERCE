@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
+import { getShoeSizes, isShoeSizeCategory, shoeSizeCategories, shoeSizesByCategory, type ShoeSizeCategory } from "@/lib/shoe-sizes";
 import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
 import InsightsDashboard from "./insights-dashboard";
@@ -152,21 +153,18 @@ function OrdersExportButton({ orders }: { orders: Order[] }) {
 const statusOptions = ["awaiting_payment", "paid", "processing", "shipped", "delivered", "cancelled"];
 const productCategories = ["Badminton", "Tennis", "Squash", "Accessories"];
 type ProductType = "shoe" | "racquet" | "other";
-type SizeCategory = "mens" | "womens" | "kids" | "tshirts" | "shorts" | "socks";
+type SizeCategory = ShoeSizeCategory | "tshirts" | "shorts" | "socks";
 type ProductSpecification = { label: string; value: string };
 
 const sizesByCategory: Record<SizeCategory, string[]> = {
-  mens: Array.from({ length: 14 }, (_, index) => `UK ${index + 2}`),
-  womens: Array.from({ length: 10 }, (_, index) => `UK ${index + 2}`),
-  kids: Array.from({ length: 10 }, (_, index) => `UK ${index + 2}`),
+  ...shoeSizesByCategory,
   tshirts: ["XS", "S", "M", "L", "XL", "XXL", "XXXL"],
   shorts: ["S", "M", "L", "XL", "XLL"],
   socks: ["Small", "Medium", "Large"],
 };
-const shoeSizeCategories: SizeCategory[] = ["mens", "womens", "kids"];
 const apparelSizeCategories: SizeCategory[] = ["tshirts", "shorts", "socks"];
 const isZohoSizeProduct = (productType: ProductType, sizeCategory: SizeCategory | null | undefined) =>
-  (productType === "shoe" && sizeCategory !== null && sizeCategory !== undefined && shoeSizeCategories.includes(sizeCategory))
+  (productType === "shoe" && isShoeSizeCategory(sizeCategory))
   || (productType === "other" && sizeCategory !== null && sizeCategory !== undefined && apparelSizeCategories.includes(sizeCategory));
 const getSizes = (sizeCategory: SizeCategory) => sizesByCategory[sizeCategory];
 function getProductType(product: Pick<Product, "product_type" | "name">): ProductType {
@@ -291,7 +289,7 @@ function ZohoSizeSkuSelector({
 }: {
   category: SizeCategory;
   onCategoryChange: (value: SizeCategory) => void;
-  sizeCategories: SizeCategory[];
+  sizeCategories: readonly SizeCategory[];
   title: string;
   sizeStock: Record<string, number>;
   sizeSkus: Record<string, string>;
@@ -300,9 +298,9 @@ function ZohoSizeSkuSelector({
   idPrefix: string;
 }) {
   const audiences: Array<{ value: SizeCategory; label: string }> = [
-    { value: "mens", label: "Men's" },
+    { value: "junior", label: "Junior" },
     { value: "womens", label: "Women's" },
-    { value: "kids", label: "Kids" },
+    { value: "mens", label: "Men's / Unisex" },
     { value: "tshirts", label: "T-shirts" },
     { value: "shorts", label: "Shorts" },
     { value: "socks", label: "Socks" },
@@ -347,7 +345,7 @@ function ZohoSizeSkuSelector({
       </div>
       <div className="admin-size-stock-footer">
         <span>Stock managed by Zoho</span>
-        <span>{shoeSizeCategories.includes(category) ? `UK ${category === "mens" ? "2–15" : "2–11"}` : `${getSizes(category).length} sizes`}</span>
+        <span>{isShoeSizeCategory(category) ? `${getShoeSizes(category)[0]}–${getShoeSizes(category).at(-1)}` : `${getSizes(category).length} sizes`}</span>
       </div>
     </div>
   );
@@ -1021,7 +1019,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                 <ProductTypeSelector value={productForm.product_type} onChange={(product_type) => setProductForm((current) => ({
                   ...current,
                   product_type,
-                  size_category: product_type === "shoe" ? (current.size_category && shoeSizeCategories.includes(current.size_category) ? current.size_category : "mens") : null,
+                  size_category: product_type === "shoe" ? (isShoeSizeCategory(current.size_category) ? current.size_category : "mens") : null,
                   zoho_size_skus: {},
                 }))} />
               </section>
@@ -1169,7 +1167,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                         <ProductTypeSelector value={editingProductType} onChange={(productType) => {
                           if (productType === editingProductType) return;
                           setEditingProductType(productType);
-                          setEditingSizeCategory(productType === "shoe" ? (editingSizeCategory && shoeSizeCategories.includes(editingSizeCategory) ? editingSizeCategory : "mens") : (editingSizeCategory && apparelSizeCategories.includes(editingSizeCategory) ? editingSizeCategory : productType === "other" ? "tshirts" : null));
+                          setEditingSizeCategory(productType === "shoe" ? (isShoeSizeCategory(editingSizeCategory) ? editingSizeCategory : "mens") : (editingSizeCategory && apparelSizeCategories.includes(editingSizeCategory) ? editingSizeCategory : productType === "other" ? "tshirts" : null));
                           setEditingSizeSkus({});
                           setEditingSizeStock({});
                           setEditingSizeSyncedAt({});

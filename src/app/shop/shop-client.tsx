@@ -53,7 +53,7 @@ function validCart(value: unknown): value is CartLine[] {
       && typeof entry.product.price === "number"
       && typeof entry.product.image === "string"
       && (entry.product.productType === undefined || entry.product.productType === "shoe" || entry.product.productType === "racquet" || entry.product.productType === "other")
-      && (entry.product.sizeCategory === undefined || entry.product.sizeCategory === null || entry.product.sizeCategory === "mens" || entry.product.sizeCategory === "womens" || entry.product.sizeCategory === "kids")
+      && (entry.product.sizeCategory === undefined || entry.product.sizeCategory === null || entry.product.sizeCategory === "junior" || entry.product.sizeCategory === "mens" || entry.product.sizeCategory === "womens" || entry.product.sizeCategory === "kids")
       && (entry.product.colors === undefined || (Array.isArray(entry.product.colors) && entry.product.colors.every((color) => typeof color === "string")))
       && (entry.product.sizes === undefined || (Array.isArray(entry.product.sizes) && entry.product.sizes.every((size) => typeof size === "string")))
       && (entry.product.unavailableSizes === undefined || (Array.isArray(entry.product.unavailableSizes) && entry.product.unavailableSizes.every((size) => typeof size === "string")))

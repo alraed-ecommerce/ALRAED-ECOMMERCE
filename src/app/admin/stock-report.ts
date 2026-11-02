@@ -16,7 +16,7 @@ export type StockReportProduct = {
   zoho_stock_synced_at?: string | null;
 };
 
-const shoeSizes = Array.from({ length: 14 }, (_, index) => `UK ${index + 1}`);
+const shoeSizes = Array.from({ length: 15 }, (_, index) => `EU ${index + 32}`);
 
 function isShoe(product: StockReportProduct) {
   return product.product_type ? product.product_type === "shoe" : /shoe|sneaker/i.test(product.name);
