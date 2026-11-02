@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, LockKeyhole, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, LockKeyhole, MapPin, Tag, Trash2 } from "lucide-react";
 import type { User } from "firebase/auth";
 import { subscribeToAuth } from "@/lib/firebase";
 import type { CartLine } from "@/lib/store-products";
@@ -30,15 +30,20 @@ type Quote = {
   total: number;
 };
 
+type SavedAddress = { id: string; label: string; city: string; address: string; is_default: boolean };
 type SavedProfile = {
   phone: string | null;
-  addresses: Array<{ label: string; city: string; address: string; is_default: boolean }> | null;
+  addresses: SavedAddress[] | null;
 };
 
 const cartKey = "alraed-storefront-cart";
 const couponKey = "alraed-checkout-coupon";
 const attemptKey = "alraed-checkout-attempt";
 const money = (amount: number) => `AED ${amount.toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const isCompleteSavedAddress = (address: SavedAddress) =>
+  typeof address.id === "string" && Boolean(address.id.trim())
+  && typeof address.city === "string" && Boolean(address.city.trim())
+  && typeof address.address === "string" && Boolean(address.address.trim());
 
 function isCartLine(value: unknown): value is CartLine {
   if (!value || typeof value !== "object") return false;
@@ -67,6 +72,7 @@ export default function OrderSummaryPage() {
   const [cartLoaded, setCartLoaded] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [profile, setProfile] = useState<SavedProfile | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
   const [couponInput, setCouponInput] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -132,12 +138,16 @@ export default function OrderSummaryPage() {
           cache: "no-store",
         });
         const result = await response.json() as { profile?: SavedProfile; error?: string };
-        if (!response.ok || !result.profile?.phone?.trim()
-          || !result.profile.addresses?.some((address) => address.is_default && address.city.trim() && address.address.trim())) {
+        const validAddresses = result.profile?.addresses?.filter(isCompleteSavedAddress) ?? [];
+        if (!response.ok || !result.profile?.phone?.trim() || validAddresses.length === 0) {
           router.replace("/account?checkout=details");
           return;
         }
         setProfile(result.profile);
+        setSelectedAddressId(
+          validAddresses.find((address) => address.is_default)?.id
+          ?? validAddresses[0].id,
+        );
       } catch (profileError) {
         setError(profileError instanceof Error ? profileError.message : "Unable to verify your delivery details.");
       } finally {
@@ -218,6 +228,10 @@ export default function OrderSummaryPage() {
 
   const proceedToPayment = async () => {
     if (!user || !quote || paymentLoading) return;
+    if (!profile?.addresses?.some((address) => address.id === selectedAddressId)) {
+      setError("Choose a saved delivery address before continuing to payment.");
+      return;
+    }
     setPaymentLoading(true);
     setError("");
     try {
@@ -225,6 +239,7 @@ export default function OrderSummaryPage() {
       const checkoutFingerprint = JSON.stringify({
         products: cart.map(({ product, quantity, color, size }) => [product.id, quantity, color ?? null, size ?? null]),
         coupon: appliedCouponCode,
+        address: selectedAddressId,
       });
       let savedAttempt: { fingerprint: string; id: string } | null = null;
       try {
@@ -249,6 +264,7 @@ export default function OrderSummaryPage() {
             ...(size ? { size } : {}),
           })),
           couponCode: appliedCouponCode,
+          addressId: selectedAddressId,
           checkoutAttemptId,
         }),
       });
@@ -268,7 +284,7 @@ export default function OrderSummaryPage() {
     }
   };
 
-  const defaultAddress = profile?.addresses?.find((address) => address.is_default);
+  const selectedAddress = profile?.addresses?.find((address) => address.id === selectedAddressId);
   const busy = loading || !cartLoaded || quoteLoading;
 
   return (
@@ -308,7 +324,29 @@ export default function OrderSummaryPage() {
                   </article>
                 ))}
               </div>
-              {defaultAddress && <div className="checkout-summary-address"><strong>Delivering to {defaultAddress.label}</strong><span>{defaultAddress.city} · {defaultAddress.address}</span></div>}
+              <div className="checkout-summary-address">
+                <div className="checkout-summary-address-heading">
+                  <div><strong>Delivery location</strong><span>Choose where this order should arrive.</span></div>
+                  <Link href="/account?checkout=details">Edit addresses</Link>
+                </div>
+                <div className="checkout-address-options" role="group" aria-label="Choose a delivery address">
+                  {profile?.addresses?.filter(isCompleteSavedAddress).map((address) => (
+                    <button
+                      type="button"
+                      key={address.id}
+                      className={`checkout-address-option${selectedAddressId === address.id ? " is-selected" : ""}`}
+                      onClick={() => setSelectedAddressId(address.id)}
+                      aria-pressed={selectedAddressId === address.id}
+                      disabled={paymentLoading}
+                    >
+                      <MapPin size={16} aria-hidden="true" />
+                      <span><strong>{address.label || "Delivery address"}{address.is_default ? " · Default" : ""}</strong><small>{address.city} · {address.address}</small></span>
+                      <span className="checkout-address-check" aria-hidden="true">{selectedAddressId === address.id ? <Check size={14} /> : null}</span>
+                    </button>
+                  ))}
+                </div>
+                {!selectedAddress && <p className="checkout-address-error" role="alert">Choose a delivery address to continue.</p>}
+              </div>
             </section>
 
             <aside className="account-panel checkout-summary-totals">
@@ -335,6 +373,7 @@ export default function OrderSummaryPage() {
                 {quote?.coupon && <div className="checkout-discount-row"><span>Coupon discount</span><strong>− {money(quote.discount)}</strong></div>}
                 <div className="checkout-final-total"><span>Total payable</span><strong>{quote ? money(quote.total) : "—"}</strong></div>
               </div>
+              <p className="checkout-summary-delivery-note">Delivery fees and handling are included in the total above. You can confirm your address before paying.</p>
 
               {error && <p className="checkout-summary-error" role="alert">{error}</p>}
               <button className="account-primary-button checkout-pay-button" type="button" onClick={() => void proceedToPayment()} disabled={!quote || paymentLoading || quoteLoading}>

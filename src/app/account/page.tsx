@@ -337,7 +337,7 @@ export default function AccountPage() {
                 <article className="order-card" key={order.id}>
                   <div className="order-card-heading"><div><span>ORDER</span><strong>#{order.id.slice(0, 8).toUpperCase()}</strong></div><span className={`order-status status-${order.status.toLowerCase()}`}><Clock3 size={12} />{formatOrderStatus(order.status)}</span></div>
                   <div className="order-items">{order.order_items?.map((item) => <div key={item.id}><span>{item.product_name} <small>× {item.quantity}</small></span><strong>AED {(Number(item.unit_price) * item.quantity).toLocaleString()}</strong></div>)}</div>
-                  <div className="order-delivery"><MapPin size={13} /><span>{order.city} · {order.address}</span></div>
+                  <div className="order-delivery"><MapPin size={13} /><span>{[order.address, order.city].filter(Boolean).join(", ") || "Delivery location unavailable"}</span></div>
                   <div className="order-card-footer"><time>{new Date(order.created_at).toLocaleDateString("en-AE", { day: "numeric", month: "short", year: "numeric" })}</time><strong>AED {Number(order.total).toLocaleString()}</strong></div>
                   {(order.status === "paid" || order.stripe_payment_intent_id || order.stripe_paid_at) && <div className="order-payment-summary"><strong>Payment confirmed</strong><span>{order.stripe_payment_method || "Payment confirmed"}</span>{order.stripe_paid_at && <time>{new Date(order.stripe_paid_at).toLocaleDateString("en-AE")}</time>}</div>}
                 </article>

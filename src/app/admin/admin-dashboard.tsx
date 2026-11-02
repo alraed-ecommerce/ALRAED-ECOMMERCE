@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
+import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PackageCheck, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import { ALRAED_WHATSAPP_CONTACT, createWhatsAppOrderConfirmationLink, normalizeWhatsAppPhone } from "@/lib/whatsapp";
@@ -386,6 +386,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState("");
   const [orderDateFilter, setOrderDateFilter] = useState("");
+  const [orderQueueFilter, setOrderQueueFilter] = useState<"all" | "awaiting_payment" | "paid" | "shipped">("all");
   const [productSearch, setProductSearch] = useState("");
   const [productListView, setProductListView] = useState<"recent" | "all">("recent");
   const [productVisibility, setProductVisibility] = useState<"all" | "live" | "hidden">("all");
@@ -411,8 +412,12 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     const matchesName = order.customer_name.toLowerCase().includes(orderSearch.trim().toLowerCase());
     const matchesStatus = !orderStatusFilter || order.status === orderStatusFilter;
     const matchesDate = !orderDateFilter || new Date(order.created_at).toISOString().slice(0, 10) === orderDateFilter;
-    return matchesName && matchesStatus && matchesDate;
+    const matchesQueue = orderQueueFilter === "all" || order.status === orderQueueFilter;
+    return matchesName && matchesStatus && matchesDate && matchesQueue;
   });
+  const paidOrdersNeedingProcessing = orders.filter((order) => order.status === "paid").length;
+  const ordersAwaitingPayment = orders.filter((order) => order.status === "awaiting_payment").length;
+  const ordersOnTheWay = orders.filter((order) => order.status === "shipped").length;
 
   const recentlySoldProductIds = useMemo(() => {
     const productIds = new Set(products.map((product) => product.id));
@@ -856,7 +861,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       <div className="admin-layout">
         <aside className="admin-sidebar">
           <Link href="/" className="admin-brand" aria-label="Al Raed Sports home">
-            <span className="admin-brand-mark">AR</span>
+            <img className="admin-brand-mark" src="/IMG_8477.jpg%2010-33-16-710.jpg" alt="" />
             <span className="admin-brand-name"><strong>AL RAED</strong><small>SPORTS COMMERCE</small></span>
           </Link>
           <p className="admin-sidebar-label">WORKSPACE</p>
@@ -917,6 +922,26 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             </div>
           </div>
 
+          <div className="admin-order-queues mb-4" role="group" aria-label="Order queues">
+            {([
+              { id: "all", label: "All orders", count: orders.length },
+              { id: "awaiting_payment", label: "Awaiting payment", count: ordersAwaitingPayment },
+              { id: "paid", label: "Needs processing", count: paidOrdersNeedingProcessing },
+              { id: "shipped", label: "In delivery", count: ordersOnTheWay },
+            ] as const).map((queue) => (
+              <button
+                type="button"
+                key={queue.id}
+                className={`admin-order-queue${orderQueueFilter === queue.id ? " is-active" : ""}`}
+                onClick={() => { setOrderQueueFilter(queue.id); setOrderStatusFilter(""); }}
+                aria-pressed={orderQueueFilter === queue.id}
+              >
+                <span>{queue.label}</span><strong>{queue.count}</strong>
+              </button>
+            ))}
+            <p>Paid orders need customer confirmation and an invoice before you start processing.</p>
+          </div>
+
           <div className="mb-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(170px,220px)_minmax(170px,220px)]">
             <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
               <Search size={16} />
@@ -924,7 +949,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             </label>
             <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
               <Filter size={16} />
-              <select value={orderStatusFilter} onChange={(event) => setOrderStatusFilter(event.target.value)} className="w-full bg-transparent py-2.5 text-sm text-white outline-none" aria-label="Filter orders by status">
+              <select value={orderStatusFilter} onChange={(event) => { setOrderStatusFilter(event.target.value); setOrderQueueFilter("all"); }} className="w-full bg-transparent py-2.5 text-sm text-white outline-none" aria-label="Filter orders by status">
                 <option value="">All statuses</option>
                 {statusOptions.map((option) => <option key={option} value={option}>{option === "awaiting_payment" ? "Unpaid" : statusLabel(option)}</option>)}
               </select>
@@ -936,7 +961,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           </div>
 
           <div className="space-y-3">
-            {orders.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">No orders yet.</div> : visibleOrders.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">No orders match these filters.</div> : visibleOrders.map((order) => (
+            {orders.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">No orders yet.</div> : visibleOrders.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">{orderQueueFilter === "paid" ? "No paid orders are waiting for processing." : "No orders match these filters."}</div> : visibleOrders.map((order) => (
               <div key={order.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
@@ -971,7 +996,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                 )}
 
                 {(order.status === "paid" || order.status === "processing" || order.status === "shipped" || order.status === "delivered" || order.stripe_payment_intent_id || order.stripe_paid_at) && (
-                  <div className="mt-3 grid gap-1 rounded-xl border border-emerald-900/60 bg-emerald-950/30 p-3 text-sm text-emerald-100">
+                  <div className="admin-payment-confirmation mt-3 grid gap-1 rounded-xl border border-emerald-900/60 bg-emerald-950/30 p-3 text-sm text-emerald-100">
                     <strong>Payment confirmed{order.stripe_payment_method ? ` · ${order.stripe_payment_method}` : ""}</strong>
                     {order.stripe_paid_at && <span className="text-xs text-emerald-200/70">Paid {new Date(order.stripe_paid_at).toLocaleString()}</span>}
                     {order.stripe_payment_intent_id && <span className="break-all text-xs text-emerald-200/70">Stripe reference: {order.stripe_payment_intent_id}</span>}
@@ -979,17 +1004,17 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                 )}
 
                 {(order.status === "paid" || order.status === "processing" || order.status === "shipped" || order.status === "delivered") && (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-900/60 bg-sky-950/20 p-3 text-sm text-sky-100">
-                    <span className="min-w-[220px] flex-1">{order.zoho_invoice_recorded_at
+                  <div className="admin-order-action-panel mt-3 rounded-xl border border-sky-900/60 bg-sky-950/20 p-3 text-sm text-sky-100">
+                    <span className="admin-order-action-copy">{order.zoho_invoice_recorded_at
                       ? `Zoho invoice recorded ${new Date(order.zoho_invoice_recorded_at).toLocaleString()}`
                       : "After creating this order’s invoice manually in Zoho, record it here to prevent stock being deducted twice."}</span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="admin-order-action-buttons">
                       {!order.zoho_invoice_recorded_at && (
                         <button
                           type="button"
                           onClick={() => void recordZohoInvoice(order.id)}
                           disabled={busyOrderId === order.id}
-                          className="rounded-lg border border-sky-700 px-3 py-2 font-semibold text-sky-100 transition hover:bg-sky-900/60 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="admin-action-button admin-action-secondary"
                         >
                           {busyOrderId === order.id ? "Recording…" : "Record Zoho invoice"}
                         </button>
@@ -1009,30 +1034,41 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                             href={whatsappHref ?? undefined}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 font-semibold text-emerald-950 transition hover:bg-emerald-400"
+                            className="admin-action-button admin-action-whatsapp"
                             aria-label={`Open WhatsApp confirmation for ${order.customer_name}`}
                           >
                             <MessageCircle size={16} aria-hidden="true" />
                             WhatsApp confirmation
                           </a>
                         ) : (
-                          <>
+                          <div className="admin-whatsapp-unavailable">
                             <button
                               type="button"
                               disabled
                               title={unavailableReason}
-                              className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-emerald-900 px-3 py-2 font-semibold text-emerald-200/50"
+                              className="admin-action-button admin-action-secondary"
                             >
                               <MessageCircle size={16} aria-hidden="true" />
                               WhatsApp unavailable
                             </button>
                             <span className="text-xs text-amber-200">{unavailableReason}</span>
-                          </>
+                          </div>
                         );
                       })()}
+                      {order.status === "paid" && (
+                        <button
+                          type="button"
+                          onClick={() => void updateOrderStatus(order.id, "processing")}
+                          disabled={busyOrderId === order.id}
+                          className="admin-action-button admin-action-primary"
+                        >
+                          <PackageCheck size={15} aria-hidden="true" />
+                          {busyOrderId === order.id ? "Updating…" : "Start processing"}
+                        </button>
+                      )}
                     </div>
-                    <p className="basis-full text-xs text-slate-400">
-                      WhatsApp opens a ready-to-review message; send it from the admin account ({ALRAED_WHATSAPP_CONTACT}).
+                    <p className="admin-order-action-note text-xs text-slate-400">
+                      When available, review and send the WhatsApp draft from the admin account ({ALRAED_WHATSAPP_CONTACT}). Mark processing after the customer has been contacted.
                     </p>
                   </div>
                 )}
@@ -1140,7 +1176,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                     </label>
                     {productForm.image_url && <img src={productForm.image_url} alt="Product preview" className="h-40 w-full rounded-xl border border-slate-800 bg-slate-950 object-contain" />}
                   </section>
-                  <button type="button" onClick={() => void saveProduct()} disabled={savingProduct || uploadingImage || !productForm.image_url} className="w-full rounded-2xl bg-sky-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-sky-400 disabled:opacity-60">
+                  <button type="button" onClick={() => void saveProduct()} disabled={savingProduct || uploadingImage || !productForm.image_url} className="admin-action-button admin-action-primary w-full">
+                    <Save size={16} aria-hidden="true" />
                     {savingProduct ? "Saving product..." : "Save product"}
                   </button>
                 </>
@@ -1149,21 +1186,23 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           </section>
 
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-bold">Current products</h2>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="admin-product-toolbar mb-4">
+              <div className="admin-product-toolbar-heading">
+                <h2 className="text-xl font-bold">Current products</h2>
                 <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">{visibleProducts.length} shown · {products.length} total</span>
-                <button type="button" onClick={() => void exportStockReport()} disabled={downloadingStockReport || products.length === 0} className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Download stock report as an Excel workbook">
+              </div>
+              <div className="admin-product-toolbar-actions">
+                <button type="button" onClick={() => void exportStockReport()} disabled={downloadingStockReport || products.length === 0} className="admin-action-button admin-action-secondary" aria-label="Download stock report as an Excel workbook">
                   <FileSpreadsheet size={15} aria-hidden="true" />
                   {downloadingStockReport ? "Preparing report..." : "Download stock report"}
                 </button>
-                <button type="button" onClick={() => void syncZohoInventory()} disabled={syncingInventory} className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-400/10 disabled:opacity-50">
+                <button type="button" onClick={() => void syncZohoInventory()} disabled={syncingInventory} className="admin-action-button admin-action-primary">
                   <RefreshCw size={14} className={syncingInventory ? "animate-spin" : ""} />
                   {syncingInventory ? "Syncing Zoho..." : "Sync Zoho stock"}
                 </button>
               </div>
             </div>
-            {productNotice && <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200" role="status">{productNotice}</div>}
+            {productNotice && <div className="admin-zoho-stock-confirmation mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200" role="status">{productNotice}</div>}
             {stockReportError && <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="alert">{stockReportError}</div>}
             <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-slate-400">
@@ -1279,7 +1318,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       </label></>}
                       {(isZohoSizeProduct(editingProductType, editingSizeCategory) || (product.sku || product.zoho_product_id)) && <p className="text-xs text-slate-400 sm:col-span-2">Zoho stock is read-only and updates during stock sync.</p>}
                       <div className="flex flex-wrap gap-2 sm:col-span-2">
-                        <button type="button" onClick={() => void saveProductEditor(product)} disabled={savingEditedProductId === product.id} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-60"><Save size={15} /> Save changes</button>
+                        <button type="button" onClick={() => void saveProductEditor(product)} disabled={savingEditedProductId === product.id} className="admin-action-button admin-action-primary"><Save size={15} aria-hidden="true" /> Save changes</button>
                         <button type="button" onClick={() => void saveProductEditor(product, !product.is_active)} disabled={savingEditedProductId === product.id} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{savingEditedProductId === product.id ? "Saving..." : product.is_active ? "Save & hide" : "Save & publish"}</button>
                       </div>
                     </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Clock3, MapPin, PackageCheck, ShoppingBag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { subscribeToAuth } from "@/lib/firebase";
+import OrderProgress from "@/components/account/OrderProgress";
 
 type OrderItem = { id: number; product_name: string; quantity: number; unit_price: number };
 type Order = {
@@ -88,8 +89,9 @@ export default function MyOrdersPage() {
                     <div><p className="account-kicker">ORDER</p><h2>#{order.id.slice(0, 8).toUpperCase()}</h2><time>{new Date(order.created_at).toLocaleDateString("en-AE", { day: "numeric", month: "short", year: "numeric" })}</time></div>
                     <span className={`order-status status-${order.status.toLowerCase()}`}><Clock3 size={12} />{formatOrderStatus(order.status)}</span>
                   </div>
+                  <OrderProgress status={order.status} />
                   <div className="order-items">{order.order_items?.map((item) => <div key={item.id}><span>{item.product_name} <small>× {item.quantity}</small></span><strong>AED {(Number(item.unit_price) * item.quantity).toLocaleString()}</strong></div>)}</div>
-                  <div className="order-delivery"><MapPin size={13} /><span>{order.city} · {order.address}</span></div>
+                  <div className="order-delivery"><MapPin size={13} /><span>{[order.address, order.city].filter(Boolean).join(", ") || "Delivery location unavailable"}</span></div>
                   <div className="my-order-total"><span>Order total</span><strong>AED {Number(order.total).toLocaleString()}</strong></div>
                   {(order.status === "paid" || order.stripe_payment_intent_id || order.stripe_paid_at) && <div className="my-order-payment" role="status">
                     <strong><PackageCheck size={15} /> Payment confirmed</strong>

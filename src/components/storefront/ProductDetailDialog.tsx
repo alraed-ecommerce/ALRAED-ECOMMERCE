@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Minus, Plus, ShoppingBag, X } from "lucide-react";
+import { ArrowUpRight, MessageCircle, Minus, Plus, ShoppingBag, X } from "lucide-react";
 import testProductDetails from "@/lib/test-product-details.json";
 import { isFootwearProduct, type StoreProduct } from "@/lib/store-products";
 
@@ -80,6 +80,9 @@ export default function ProductDetailDialog({
     }));
   };
   const details = product ? getProductDetails(product) : null;
+  const productHelpHref = product
+    ? `https://wa.me/971504848236?text=${encodeURIComponent(`Hello Al Raed Sports, I have a question about ${product.name}, delivery, or returns.`)}`
+    : null;
   const needsSize = product ? isFootwearProduct(product) : false;
   const hasSizeStock = Boolean(product && (needsSize || (product.sizes.length > 0 && Object.keys(product.sizeStock).length > 0)));
   const selectedStock = product
@@ -183,7 +186,14 @@ export default function ProductDetailDialog({
                 {product.stockStatus === "unavailable" ? "UNAVAILABLE" : selectedStock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
               </button>
             </div>
-            <p className="ar-product-detail-footnote">UAE-wide delivery · Availability shown from current stock</p>
+            <div className="ar-product-detail-assurance">
+              <p>UAE-wide delivery · Delivery fees shown at checkout</p>
+              <a href={productHelpHref ?? undefined} target="_blank" rel="noreferrer">
+                <MessageCircle size={14} aria-hidden="true" />
+                Questions about this item, delivery or returns?
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </a>
+            </div>
           </section>
         </>
       )}
