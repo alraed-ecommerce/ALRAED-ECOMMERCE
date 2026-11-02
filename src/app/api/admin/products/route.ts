@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { shoeSizeCategories, shoeSizesByCategory } from "@/lib/shoe-sizes";
+import { getZohoLowStockThreshold } from "@/lib/zoho-stock-policy";
 
 const ensureAdmin = async (request: Request) => {
   const identity = await getFirebaseIdentity(request);
@@ -159,7 +160,10 @@ export async function GET(request: Request) {
         stock: Object.values(sizeStock).reduce((total, quantity) => total + Number(quantity ?? 0), 0),
       };
     });
-    return NextResponse.json({ products: productsWithSizeStock });
+    return NextResponse.json({
+      products: productsWithSizeStock,
+      lowStockThreshold: getZohoLowStockThreshold(),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
     return NextResponse.json({ error: message }, { status: message === "Access denied" ? 403 : 401 });

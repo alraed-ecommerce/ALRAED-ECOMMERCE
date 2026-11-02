@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PackageCheck, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, Clock3, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PackageCheck, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import { ALRAED_WHATSAPP_CONTACT, createWhatsAppOrderConfirmationLink, normalizeWhatsAppPhone } from "@/lib/whatsapp";
+import { getLowStockProducts, getOverdueOrders, type OrderStatusHistoryEntry } from "@/lib/order-operations";
 import { getShoeSizes, isShoeSizeCategory, shoeSizeCategories, shoeSizesByCategory, type ShoeSizeCategory } from "@/lib/shoe-sizes";
 import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
@@ -69,6 +70,7 @@ type Order = {
   stripe_paid_at: string | null;
   zoho_invoice_recorded_at?: string | null;
   whatsapp_order_updates_opt_in: boolean;
+  status_history?: OrderStatusHistoryEntry[];
   order_items?: Array<{ id: number; product_id?: number | null; product_name: string; quantity: number; unit_price: number }>;
 };
 
@@ -365,6 +367,9 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [lowStockThreshold, setLowStockThreshold] = useState(3);
+  const [operationsError, setOperationsError] = useState<string | null>(null);
+  const [now, setNow] = useState(0);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
   const [editingProductCategory, setEditingProductCategory] = useState("Badminton");
@@ -418,6 +423,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const paidOrdersNeedingProcessing = orders.filter((order) => order.status === "paid").length;
   const ordersAwaitingPayment = orders.filter((order) => order.status === "awaiting_payment").length;
   const ordersOnTheWay = orders.filter((order) => order.status === "shipped").length;
+  const overdueOrders = getOverdueOrders(orders, now);
+  const lowStockProducts = operationsError ? [] : getLowStockProducts(products, lowStockThreshold);
 
   const recentlySoldProductIds = useMemo(() => {
     const productIds = new Set(products.map((product) => product.id));
@@ -511,7 +518,17 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Unable to load products.");
     setProducts(result.products ?? []);
+    setLowStockThreshold(Number.isInteger(result.lowStockThreshold) ? result.lowStockThreshold : 3);
   };
+
+  useEffect(() => {
+    const initialUpdate = window.setTimeout(() => setNow(Date.now()), 0);
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => {
+      window.clearTimeout(initialUpdate);
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     return subscribeToAuth(async (currentUser) => {
@@ -541,6 +558,12 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           await Promise.all([loadOrders(token), loadProducts(token)]);
         } else if (section === "orders") {
           await loadOrders(token);
+          try {
+            await loadProducts(token);
+            setOperationsError(null);
+          } catch (error) {
+            setOperationsError(error instanceof Error ? error.message : "Unable to load current inventory warnings.");
+          }
         }
       } catch (error) {
         setIsAdmin(false);
@@ -583,6 +606,11 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to update order.");
       setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status } : order));
+      try {
+        await loadOrders(token);
+      } catch {
+        setAuthError("Order status was updated, but its history could not be refreshed. Reload the page to verify the latest activity.");
+      }
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to update order.");
     } finally {
@@ -922,6 +950,95 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             </div>
           </div>
 
+          <section className="admin-operations-panel mb-5" aria-label="Operational alerts">
+            <div className="admin-operations-heading">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-300">Operational visibility</p>
+                <h3 className="mt-1 text-base font-bold text-white">Needs attention</h3>
+              </div>
+              <span className="text-xs text-slate-400">Processing &gt; 24 hours · delivery &gt; 3 days · stock ≤ {lowStockThreshold}</span>
+            </div>
+            {operationsError && <p className="admin-operations-error" role="alert">Inventory warnings unavailable: {operationsError}</p>}
+            <div className="admin-operations-grid">
+              <article className="admin-operations-card">
+                <div className="admin-operations-card-heading">
+                  <Clock3 size={16} aria-hidden="true" />
+                  <strong>Processing overdue</strong>
+                  <span>{overdueOrders.processing.length}</span>
+                </div>
+                {overdueOrders.processing.length === 0 ? <p className="admin-operations-empty">No paid orders overdue for processing.</p> : (
+                  <ul>
+                    {overdueOrders.processing.slice(0, 4).map((order) => {
+                      const paidAt = order.stripe_paid_at ?? order.status_history?.find((entry) => entry.new_status === "paid")?.changed_at;
+                      return (
+                        <li key={order.id}>
+                          <button type="button" onClick={() => {
+                            setOrderSearch(order.customer_name);
+                            setOrderStatusFilter("");
+                            setOrderDateFilter("");
+                            setOrderQueueFilter("all");
+                          }}>
+                            <span>#{order.id.slice(0, 8).toUpperCase()} · {order.customer_name}</span>
+                            <small>Paid {paidAt ? new Date(paidAt).toLocaleString() : "date unavailable"}</small>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </article>
+              <article className="admin-operations-card">
+                <div className="admin-operations-card-heading">
+                  <PackageCheck size={16} aria-hidden="true" />
+                  <strong>Delivery follow-up</strong>
+                  <span>{overdueOrders.delivery.length}</span>
+                </div>
+                {overdueOrders.delivery.length === 0 ? <p className="admin-operations-empty">No shipped orders overdue for delivery.</p> : (
+                  <ul>
+                    {overdueOrders.delivery.slice(0, 4).map((order) => {
+                      const shippedAt = order.status_history?.find((entry) => entry.new_status === "shipped")?.changed_at;
+                      return (
+                        <li key={order.id}>
+                          <button type="button" onClick={() => {
+                            setOrderSearch(order.customer_name);
+                            setOrderStatusFilter("");
+                            setOrderDateFilter("");
+                            setOrderQueueFilter("all");
+                          }}>
+                            <span>#{order.id.slice(0, 8).toUpperCase()} · {order.customer_name}</span>
+                            <small>Shipped {shippedAt ? new Date(shippedAt).toLocaleString() : "date unavailable"}</small>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </article>
+              <article className="admin-operations-card">
+                <div className="admin-operations-card-heading">
+                  <AlertTriangle size={16} aria-hidden="true" />
+                  <strong>Low stock</strong>
+                  <span>{operationsError ? "—" : lowStockProducts.length}</span>
+                </div>
+                {operationsError ? <p className="admin-operations-empty">Current stock could not be loaded.</p> : lowStockProducts.length === 0 ? <p className="admin-operations-empty">No active products are at or below the threshold.</p> : (
+                  <ul>
+                    {lowStockProducts.slice(0, 4).map((product) => (
+                      <li key={product.id}>
+                        <Link href="/admin/products">
+                          <span>{product.name}</span>
+                          <small>{product.stock} unit{product.stock === 1 ? "" : "s"} remaining</small>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </article>
+            </div>
+            {(overdueOrders.processing.length > 4 || overdueOrders.delivery.length > 4 || lowStockProducts.length > 4) && (
+              <p className="admin-operations-overflow">Showing the first 4 items in each alert. Use the order and product lists to review the rest.</p>
+            )}
+          </section>
+
           <div className="admin-order-queues mb-4" role="group" aria-label="Order queues">
             {([
               { id: "all", label: "All orders", count: orders.length },
@@ -1081,6 +1198,20 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                     </div>
                   ))}
                 </div>
+
+                <details className="admin-status-history">
+                  <summary><Clock3 size={14} aria-hidden="true" />Status history <span>{order.status_history?.length ?? 0}</span></summary>
+                  {order.status_history?.length ? (
+                    <ol>
+                      {[...order.status_history].reverse().map((entry) => (
+                        <li key={entry.id}>
+                          <strong>{statusLabel(entry.previous_status)} <ArrowRight size={12} aria-hidden="true" /> {statusLabel(entry.new_status)}</strong>
+                          <span>{entry.changed_by_email || "Automated system"} · {new Date(entry.changed_at).toLocaleString()}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : <p>No tracked status changes. Older changes from before audit tracking are not available.</p>}
+                </details>
               </div>
             ))}
           </div>

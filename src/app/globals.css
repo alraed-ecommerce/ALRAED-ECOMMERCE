@@ -3571,6 +3571,152 @@ textarea { transition-duration: .2s; }
   line-height: 1.5;
   margin: 1px 0 0;
 }
+.admin-operations-panel {
+  background: color-mix(in srgb, var(--paper) 94%, var(--blue));
+  border: 1px solid var(--theme-border);
+  border-radius: 16px;
+  padding: 14px;
+}
+.admin-operations-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.admin-operations-grid { display: grid; gap: 10px; }
+.admin-operations-card {
+  background: var(--paper);
+  border: 1px solid var(--theme-border);
+  border-radius: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+.admin-operations-card-heading {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+}
+.admin-operations-card-heading > svg { color: #d97706; flex: 0 0 auto; }
+.admin-operations-card-heading > span {
+  align-items: center;
+  background: color-mix(in srgb, #f59e0b 16%, var(--paper));
+  border-radius: 999px;
+  color: #92400e;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 750;
+  justify-content: center;
+  margin-left: auto;
+  min-width: 22px;
+  padding: 3px 6px;
+}
+.admin-operations-card ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.admin-operations-card li > button,
+.admin-operations-card li > a {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  display: grid;
+  font: inherit;
+  gap: 3px;
+  padding: 7px;
+  text-align: left;
+  text-decoration: none;
+  width: 100%;
+}
+.admin-operations-card li > button { cursor: pointer; }
+.admin-operations-card li > button:hover,
+.admin-operations-card li > a:hover { background: color-mix(in srgb, var(--blue) 8%, var(--paper)); }
+.admin-operations-card li > button span,
+.admin-operations-card li > a span {
+  font-size: 11px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-operations-card li small,
+.admin-operations-empty {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.admin-operations-empty { margin: 10px 0 0; }
+.admin-operations-error {
+  background: color-mix(in srgb, #ef4444 8%, var(--paper));
+  border: 1px solid color-mix(in srgb, #ef4444 25%, var(--theme-border));
+  border-radius: 9px;
+  color: #991b1b;
+  font-size: 11px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+}
+.admin-operations-overflow {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+  margin: 10px 0 0;
+}
+.admin-status-history {
+  border-top: 1px solid var(--theme-border);
+  margin-top: 12px;
+  padding-top: 9px;
+}
+.admin-status-history > summary {
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  font-weight: 650;
+  gap: 6px;
+  list-style: none;
+}
+.admin-status-history > summary::-webkit-details-marker { display: none; }
+.admin-status-history > summary > span {
+  background: color-mix(in srgb, var(--muted) 12%, var(--paper));
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 10px;
+  min-width: 19px;
+  padding: 2px 6px;
+  text-align: center;
+}
+.admin-status-history > ol {
+  border-left: 1px solid var(--theme-border);
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 10px 0 0 6px;
+  padding: 0 0 0 12px;
+}
+.admin-status-history > ol > li { display: grid; gap: 3px; }
+.admin-status-history > ol strong {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  font-size: 11px;
+  gap: 5px;
+}
+.admin-status-history > ol strong svg { color: var(--muted); }
+.admin-status-history > ol span,
+.admin-status-history > p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.admin-status-history > p { margin: 9px 0 0; }
 .ar-product-detail-assurance {
   border-top: 1px solid var(--theme-border);
   display: grid;
@@ -3601,6 +3747,9 @@ textarea { transition-duration: .2s; }
   .admin-order-queues { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .admin-order-queues > p { grid-column: 1 / -1; }
 }
+@media (min-width: 900px) {
+  .admin-operations-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 480px) {
   .order-progress { margin-left: -5px; margin-right: -5px; }
   .order-progress-label { font-size: 8px; }
@@ -3611,3 +3760,5 @@ textarea { transition-duration: .2s; }
 :root[data-theme="dark"] .order-progress-cancelled { background: #351c1a; border-color: #69403a; color: #ffd3c9; }
 :root[data-theme="dark"] .checkout-address-option.is-selected { background: color-mix(in srgb, var(--blue) 15%, var(--paper)); }
 :root[data-theme="dark"] .admin-dashboard .admin-order-queue.is-active { background: color-mix(in srgb, var(--blue) 16%, var(--paper)); }
+:root[data-theme="dark"] .admin-operations-card-heading > span { color: #fcd34d; }
+:root[data-theme="dark"] .admin-operations-error { color: #fecaca; }
