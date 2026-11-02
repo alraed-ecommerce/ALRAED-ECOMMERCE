@@ -45,7 +45,6 @@ declare
   v_product public.products%rowtype;
   v_external_stock integer;
   v_size text;
-  v_pending_sales integer;
   v_reserved_stock integer;
   v_updated_count integer := 0;
   v_sync_time timestamptz;
@@ -156,24 +155,11 @@ begin
         raise exception using message = 'ZOHO_SIZE_MAPPING_INVALID:' || v_product.id || ':' || v_size;
       end if;
 
-      select coalesce(sum(item.quantity), 0)::integer into v_pending_sales
-      from public.orders as customer_order
-      join public.order_items as item on item.order_id = customer_order.id
-      where item.product_id = v_product.id
-        and customer_order.status in ('paid', 'processing', 'shipped', 'delivered')
-        and customer_order.created_at >= v_product.zoho_stock_reconciliation_started_at
-        and customer_order.zoho_invoice_recorded_at is null
-        and item.size = v_size;
-
-      if v_external_stock < v_pending_sales then
-        raise exception using message = 'ZOHO_STOCK_BELOW_UNRECORDED_PAID_SALES:' || coalesce(v_product.sku, v_product.zoho_product_id, v_product.id::text) || ':' || v_size;
-      end if;
-
       select coalesce(sum(quantity), 0)::integer into v_reserved_stock
       from public.stripe_order_stock_reservations
       where product_id = v_product.id and size_key = v_size;
 
-      if v_external_stock - v_pending_sales < v_reserved_stock then
+      if v_external_stock < v_reserved_stock then
         raise exception using message = 'ZOHO_STOCK_BELOW_ACTIVE_CHECKOUT_RESERVATIONS:' || coalesce(v_product.sku, v_product.zoho_product_id, v_product.id::text) || ':' || v_size;
       end if;
 
@@ -186,7 +172,7 @@ begin
       v_updated_size_stock := jsonb_set(
         v_updated_size_stock,
         array[v_size],
-        to_jsonb(v_external_stock - v_pending_sales),
+        to_jsonb(v_external_stock),
         true
       );
       v_updated_size_sync_times := jsonb_set(
@@ -219,29 +205,17 @@ begin
       continue;
     end if;
 
-    select coalesce(sum(item.quantity), 0)::integer into v_pending_sales
-    from public.orders as customer_order
-    join public.order_items as item on item.order_id = customer_order.id
-    where item.product_id = v_product.id
-      and customer_order.status in ('paid', 'processing', 'shipped', 'delivered')
-      and customer_order.created_at >= v_product.zoho_stock_reconciliation_started_at
-      and customer_order.zoho_invoice_recorded_at is null;
-
-    if v_external_stock < v_pending_sales then
-      raise exception using message = 'ZOHO_STOCK_BELOW_UNRECORDED_PAID_SALES:' || coalesce(v_product.sku, v_product.zoho_product_id, v_product.id::text);
-    end if;
-
     select coalesce(sum(quantity), 0)::integer into v_reserved_stock
     from public.stripe_order_stock_reservations
     where product_id = v_product.id;
 
-    if v_external_stock - v_pending_sales < v_reserved_stock then
+    if v_external_stock < v_reserved_stock then
       raise exception using message = 'ZOHO_STOCK_BELOW_ACTIVE_CHECKOUT_RESERVATIONS:' || coalesce(v_product.sku, v_product.zoho_product_id, v_product.id::text);
     end if;
 
     v_sync_time := clock_timestamp();
     update public.products
-    set stock = v_external_stock - v_pending_sales,
+    set stock = v_external_stock,
         zoho_product_id = coalesce(nullif(btrim(v_update.update_row->>'zoho_product_id'), ''), zoho_product_id),
         zoho_stock_synced_at = v_sync_time,
         stripe_sales_synced_at = v_sync_time

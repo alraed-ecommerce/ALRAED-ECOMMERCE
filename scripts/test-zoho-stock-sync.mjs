@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const originalFetch = globalThis.fetch;
@@ -24,6 +25,10 @@ process.env.ZOHO_API_URL = "https://www.zohoapis.com";
 
 const { getZohoStockUpdates, ZohoInventoryError } = await import("../src/lib/zoho-inventory.ts");
 const { getZohoStockStatus, isZohoSizeStockSynced, isZohoStockFresh } = await import("../src/lib/zoho-stock-policy.ts");
+const stockReconciliationMigration = readFileSync(
+  new URL("../SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql", import.meta.url),
+  "utf8",
+);
 
 test.after(() => {
   globalThis.fetch = originalFetch;
@@ -80,6 +85,18 @@ test("does not make any Zoho requests when no website products are mapped", asyn
 
   assert.deepEqual(await getZohoStockUpdates([{ sku: null }]), []);
   assert.equal(requestCount, 0);
+});
+
+test("stock reconciliation mirrors Zoho quantities without subtracting paid sales", () => {
+  const functionDefinition = stockReconciliationMigration.match(
+    /create or replace function public\.sync_zoho_product_stock[\s\S]*?\n\$\$;/i,
+  )?.[0];
+
+  assert.ok(functionDefinition, "stock reconciliation function should exist");
+  assert.doesNotMatch(functionDefinition, /pending_sales|UNRECORDED_PAID_SALES/i);
+  assert.match(functionDefinition, /to_jsonb\(v_external_stock\)/i);
+  assert.match(functionDefinition, /set stock = v_external_stock/i);
+  assert.equal((functionDefinition.match(/if v_external_stock < v_reserved_stock/gi) ?? []).length, 2);
 });
 
 test("matches by stable Zoho item ID even when the Zoho SKU changes", async () => {

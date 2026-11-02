@@ -67,9 +67,6 @@ const syncInventory = async (request: Request) => {
         if (error.code === "42703" || error.code === "PGRST202") {
           return NextResponse.json({ error: "Apply SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql in Supabase before syncing stock." }, { status: 503 });
         }
-        if (error.message.includes("ZOHO_STOCK_BELOW_UNRECORDED_PAID_SALES:")) {
-          return NextResponse.json({ error: "Zoho stock is below paid website sales not yet recorded as invoiced. If those sales are already invoiced in Zoho, record the invoice in Admin and retry; otherwise verify the stock before syncing." }, { status: 409 });
-        }
         if (error.message.includes("ZOHO_STOCK_BELOW_ACTIVE_CHECKOUT_RESERVATIONS:")) {
           return NextResponse.json({ error: "Zoho stock is below active checkout reservations. Wait for those checkouts to finish or expire, then retry." }, { status: 409 });
         }

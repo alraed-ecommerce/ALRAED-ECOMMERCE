@@ -1124,7 +1124,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                   <div className="admin-order-action-panel mt-3 rounded-xl border border-sky-900/60 bg-sky-950/20 p-3 text-sm text-sky-100">
                     <span className="admin-order-action-copy">{order.zoho_invoice_recorded_at
                       ? `Zoho invoice recorded ${new Date(order.zoho_invoice_recorded_at).toLocaleString()}`
-                      : "After creating this order’s invoice manually in Zoho, record it here to prevent stock being deducted twice."}</span>
+                      : "After creating this order’s invoice manually in Zoho, record it here as an administrative reference."}</span>
                     <div className="admin-order-action-buttons">
                       {!order.zoho_invoice_recorded_at && (
                         <button
