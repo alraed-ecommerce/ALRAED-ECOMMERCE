@@ -39,6 +39,7 @@ type Product = {
   stock: number;
   is_active?: boolean;
   description?: string | null;
+  specifications?: Record<string, string> | null;
   colors?: string[];
   sizes?: string[];
   unavailable_sizes?: string[];
@@ -152,6 +153,7 @@ const statusOptions = ["awaiting_payment", "paid", "processing", "shipped", "del
 const productCategories = ["Badminton", "Tennis", "Squash", "Accessories"];
 type ProductType = "shoe" | "racquet" | "other";
 type SizeCategory = "mens" | "womens" | "kids" | "tshirts" | "shorts" | "socks";
+type ProductSpecification = { label: string; value: string };
 
 const sizesByCategory: Record<SizeCategory, string[]> = {
   mens: Array.from({ length: 14 }, (_, index) => `UK ${index + 2}`),
@@ -174,6 +176,86 @@ function getProductType(product: Pick<Product, "product_type" | "name">): Produc
 
 function parseOptionList(value: string) {
   return value.split(",").map((option) => option.trim()).filter(Boolean);
+}
+
+function getSpecificationRows(specifications?: Record<string, string> | null): ProductSpecification[] {
+  const rows = Object.entries(specifications ?? {}).map(([label, value]) => ({ label, value }));
+  return rows.length ? rows : [{ label: "", value: "" }];
+}
+
+function serializeSpecifications(rows: ProductSpecification[]) {
+  const specifications: Record<string, string> = {};
+  const labels = new Set<string>();
+  for (const row of rows) {
+    const label = row.label.trim();
+    const value = row.value.trim();
+    if (!label && !value) continue;
+    if (!label || !value) {
+      return { values: undefined, error: "Complete or remove each product specification row." };
+    }
+    if (labels.has(label.toLocaleLowerCase())) {
+      return { values: undefined, error: "Specification names must be unique." };
+    }
+    labels.add(label.toLocaleLowerCase());
+    specifications[label] = value;
+  }
+  return { values: specifications, error: undefined };
+}
+
+function ProductSpecificationsEditor({
+  rows,
+  onChange,
+  idPrefix,
+}: {
+  rows: ProductSpecification[];
+  onChange: (rows: ProductSpecification[]) => void;
+  idPrefix: string;
+}) {
+  return (
+    <div className="space-y-3">
+      {rows.map((row, index) => (
+        <div key={`${idPrefix}-specification-${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+          <label className="grid gap-1.5 text-xs font-semibold text-slate-400">
+            Specification name
+            <input
+              value={row.label}
+              onChange={(event) => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, label: event.target.value } : item))}
+              maxLength={60}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400"
+              placeholder="e.g. Material"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold text-slate-400">
+            Specification detail
+            <input
+              value={row.value}
+              onChange={(event) => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))}
+              maxLength={500}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400"
+              placeholder="e.g. Graphite composite"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => onChange(rows.length === 1 ? [{ label: "", value: "" }] : rows.filter((_, rowIndex) => rowIndex !== index))}
+            className="self-end rounded-xl border border-slate-700 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:border-rose-400 hover:text-rose-200"
+            aria-label={`Remove specification ${index + 1}`}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      {rows.length < 30 && (
+        <button
+          type="button"
+          onClick={() => onChange([...rows, { label: "", value: "" }])}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-sky-200 hover:border-sky-400"
+        >
+          <Plus size={14} /> Add specification
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ProductTypeSelector({ value, onChange }: { value: ProductType | ""; onChange: (value: ProductType) => void }) {
@@ -294,6 +376,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [editingProductSku, setEditingProductSku] = useState("");
   const [editingZohoProductId, setEditingZohoProductId] = useState("");
   const [editingProductColors, setEditingProductColors] = useState("");
+  const [editingProductDescription, setEditingProductDescription] = useState("");
+  const [editingProductSpecifications, setEditingProductSpecifications] = useState<ProductSpecification[]>([{ label: "", value: "" }]);
   const [savingEditedProductId, setSavingEditedProductId] = useState<number | null>(null);
   const [productNotice, setProductNotice] = useState<string | null>(null);
   const [stockReportError, setStockReportError] = useState<string | null>(null);
@@ -316,6 +400,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     zoho_size_skus: {} as Record<string, string>,
     price: "",
     image_url: "",
+    description: "",
+    specifications: [{ label: "", value: "" }] as ProductSpecification[],
   });
   const [savingProduct, setSavingProduct] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -536,6 +622,11 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       setAuthError("Enter the exact Zoho SKU or item ID. Stock is managed by Zoho.");
       return;
     }
+    const specifications = serializeSpecifications(productForm.specifications);
+    if (specifications.error) {
+      setAuthError(specifications.error);
+      return;
+    }
     setSavingProduct(true);
     setAuthError(null);
 
@@ -546,6 +637,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         sku: productForm.sku.trim(),
         zoho_product_id: productForm.zoho_product_id.trim(),
         price: Number(productForm.price),
+        description: productForm.description.trim(),
+        specifications: specifications.values,
       };
 
       const response = await fetch("/api/admin/products", {
@@ -568,6 +661,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         zoho_size_skus: {},
         price: "",
         image_url: "",
+        description: "",
+        specifications: [{ label: "", value: "" }],
       });
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to save product.");
@@ -643,6 +738,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     setEditingProductSku(product.sku ?? "");
     setEditingZohoProductId(product.zoho_product_id ?? "");
     setEditingProductColors(product.colors?.join(", ") ?? "");
+    setEditingProductDescription(product.description ?? "");
+    setEditingProductSpecifications(getSpecificationRows(product.specifications));
   };
 
   const saveProductEditor = async (product: Product, isActive = Boolean(product.is_active)) => {
@@ -658,6 +755,11 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     }
     if (!isZohoSizeProduct(editingProductType, editingSizeCategory) && !editingProductSku.trim() && !editingZohoProductId.trim()) {
       setAuthError("Enter the exact Zoho SKU or item ID. Stock is managed by Zoho.");
+      return;
+    }
+    const specifications = serializeSpecifications(editingProductSpecifications);
+    if (specifications.error) {
+      setAuthError(specifications.error);
       return;
     }
 
@@ -678,6 +780,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           sku: editingProductSku,
           zoho_product_id: editingZohoProductId,
           colors: editingProductType === "racquet" ? parseOptionList(editingProductColors) : [],
+          description: editingProductDescription.trim(),
+          specifications: specifications.values,
           ...(editingProductType === "shoe"
             ? {
               zoho_size_skus: editingSizeSkus,
@@ -977,6 +1081,15 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       <input value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} type="number" min="0" step="0.01" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" placeholder="0.00" />
                     </label>
                   </section>
+                  <section className="space-y-3">
+                    <label className="grid gap-1.5 text-xs font-semibold text-slate-400">Product description
+                      <textarea value={productForm.description} onChange={(event) => setProductForm((current) => ({ ...current, description: event.target.value }))} maxLength={3000} rows={4} className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Describe the product and its benefits for shoppers." />
+                    </label>
+                    <div className="space-y-2">
+                      <div><h3 className="text-xs font-semibold text-slate-300">Technical specifications</h3><p className="mt-1 text-[11px] text-slate-500">Add the details you want customers to see, such as material, weight, balance, or fit.</p></div>
+                      <ProductSpecificationsEditor rows={productForm.specifications} onChange={(specifications) => setProductForm((current) => ({ ...current, specifications }))} idPrefix="new-product" />
+                    </div>
+                  </section>
                   <section className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">Product image</h3>
                     <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-300 hover:border-sky-400">
@@ -1072,6 +1185,14 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                           {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
                         </select>
                       </label>
+                      <label className="grid gap-2 text-xs font-semibold text-slate-400 sm:col-span-2">
+                        Product description
+                        <textarea value={editingProductDescription} onChange={(event) => setEditingProductDescription(event.target.value)} maxLength={3000} rows={4} className="w-full resize-y rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Describe the product and its benefits for shoppers." />
+                      </label>
+                      <div className="space-y-2 sm:col-span-2">
+                        <div><h3 className="text-xs font-semibold text-slate-300">Technical specifications</h3><p className="mt-1 text-[11px] text-slate-500">These details appear in the product information on your storefront.</p></div>
+                        <ProductSpecificationsEditor rows={editingProductSpecifications} onChange={setEditingProductSpecifications} idPrefix={`edit-product-${product.id}`} />
+                      </div>
                       {editingProductType === "racquet" && <label className="grid gap-2 text-xs font-semibold text-slate-400 sm:col-span-2">
                         Colors <span className="font-normal text-slate-500">Separate colors with commas</span>
                         <input value={editingProductColors} onChange={(event) => setEditingProductColors(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Black, White, Red" />

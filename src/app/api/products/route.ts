@@ -8,13 +8,16 @@ export async function GET() {
 
   const { data: products, error } = await supabase
     .from("products")
-    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
+    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, specifications, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
     .eq("is_active", true)
     .in("category", ["Badminton", "Tennis", "Squash", "Accessories"])
     .order("created_at", { ascending: false });
 
   let productRows = products ?? [];
   if (error) {
+    if ((error.code === "42703" || error.code === "PGRST204") && /specifications/i.test(error.message)) {
+      return NextResponse.json({ error: "Run SUPABASE_PRODUCT_DETAILS_MIGRATION.sql to enable product specifications." }, { status: 503 });
+    }
     if (/zoho_size_skus|zoho_size_item_ids|zoho_size_stock_synced_at/i.test(error.message)) {
       return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql to enable Zoho shoe-size stock." }, { status: 503 });
     }
@@ -24,7 +27,7 @@ export async function GET() {
 
     const { data: legacyProducts, error: legacyError } = await supabase
       .from("products")
-      .select("id, name, brand, category, price, image_url, description, rating, reviews, stock, colors, sizes, unavailable_sizes")
+      .select("id, name, brand, category, price, image_url, description, specifications, rating, reviews, stock, colors, sizes, unavailable_sizes")
       .eq("is_active", true)
       .in("category", ["Badminton", "Tennis", "Squash", "Accessories"])
       .order("created_at", { ascending: false });

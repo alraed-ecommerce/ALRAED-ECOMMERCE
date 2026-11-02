@@ -31,6 +31,9 @@ const isZohoSizeProduct = (productType: (typeof allowedProductTypes)[number], si
   || (productType === "other" && apparelSizeCategories.includes(sizeCategory as (typeof apparelSizeCategories)[number]));
 const normalizeSku = (sku: string | null | undefined) => sku?.trim().toUpperCase() || null;
 const databaseErrorResponse = (error: { code?: string; message: string }) => {
+  if ((error.code === "42703" || error.code === "PGRST204") && /description|specifications/i.test(error.message)) {
+    return NextResponse.json({ error: "Run SUPABASE_PRODUCT_DETAILS_MIGRATION.sql in Supabase before saving product descriptions and specifications." }, { status: 503 });
+  }
   if ((error.code === "42703" || error.code === "PGRST204") && /zoho_size_skus|zoho_size_item_ids|zoho_size_stock_synced_at/i.test(error.message)) {
     return NextResponse.json({ error: "Run SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql before mapping shoe sizes to Zoho." }, { status: 503 });
   }
@@ -59,6 +62,39 @@ const normalizeOptions = (value: unknown, label: string) => {
     return { values: undefined, error: `${label} options must be unique.` };
   }
   return { values, error: undefined };
+};
+const normalizeSpecifications = (value: unknown) => {
+  if (value === undefined) return { values: undefined as Record<string, string> | undefined, error: undefined };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { values: undefined, error: "Enter specifications as name and detail pairs." };
+  }
+  const entries = Object.entries(value);
+  if (entries.length > 30) return { values: undefined, error: "Add no more than 30 product specifications." };
+  const specifications: Record<string, string> = {};
+  const labels = new Set<string>();
+  for (const [rawLabel, rawValue] of entries) {
+    if (typeof rawValue !== "string") {
+      return { values: undefined, error: "Each specification must have a text name and detail." };
+    }
+    const label = rawLabel.trim();
+    const detail = rawValue.trim();
+    if (!label && !detail) continue;
+    if (!label || !detail || label.length > 60 || detail.length > 500) {
+      return { values: undefined, error: "Each specification needs a name (up to 60 characters) and detail (up to 500 characters)." };
+    }
+    const normalizedLabel = label.toLocaleLowerCase();
+    if (labels.has(normalizedLabel)) return { values: undefined, error: "Specification names must be unique." };
+    labels.add(normalizedLabel);
+    specifications[label] = detail;
+  }
+  return { values: specifications, error: undefined };
+};
+const normalizeDescription = (value: unknown) => {
+  if (value === undefined) return { value: undefined as string | undefined, error: undefined };
+  if (typeof value !== "string" || value.trim().length > 3_000) {
+    return { value: undefined, error: "Product description must be text with up to 3,000 characters." };
+  }
+  return { value: value.trim(), error: undefined };
 };
 const normalizeSizeSkus = (value: unknown, allowedSizes: string[]) => {
   if (value === undefined) return { values: undefined as Record<string, string> | undefined, error: undefined };
@@ -155,8 +191,15 @@ export async function POST(request: Request) {
       zoho_size_skus?: unknown;
       product_type?: unknown;
       size_category?: unknown;
+      description?: unknown;
+      specifications?: unknown;
     };
 
+    const description = normalizeDescription(body.description);
+    const specifications = normalizeSpecifications(body.specifications);
+    if (description.error || specifications.error) {
+      return NextResponse.json({ error: description.error || specifications.error }, { status: 400 });
+    }
     if (body.sku !== undefined && body.sku !== null && typeof body.sku !== "string") {
       return NextResponse.json({ error: "Enter a valid SKU." }, { status: 400 });
     }
@@ -244,6 +287,8 @@ export async function POST(request: Request) {
         category: body.category.trim(),
         price: numericPrice,
         image_url: body.image_url.trim(),
+        description: description.value ?? "",
+        specifications: specifications.values ?? {},
         stock: 0,
         sku: isSizedProduct ? null : normalizeSku(body.sku),
         zoho_product_id: isSizedProduct ? null : normalizeZohoProductId(body.zoho_product_id),
@@ -295,8 +340,15 @@ export async function PUT(request: Request) {
       zoho_size_skus?: unknown;
       product_type?: unknown;
       size_category?: unknown;
+      description?: unknown;
+      specifications?: unknown;
     };
 
+    const description = normalizeDescription(body.description);
+    const specifications = normalizeSpecifications(body.specifications);
+    if (description.error || specifications.error) {
+      return NextResponse.json({ error: description.error || specifications.error }, { status: 400 });
+    }
     if (!body.id) return NextResponse.json({ error: "Product id is required." }, { status: 400 });
     const { data: existingProduct, error: existingProductError } = await supabase
       .from("products")
@@ -453,6 +505,8 @@ export async function PUT(request: Request) {
     }
     if (body.image_url !== undefined) updatePayload.image_url = body.image_url.trim();
     if (body.is_active !== undefined) updatePayload.is_active = body.is_active;
+    if (description.value !== undefined) updatePayload.description = description.value;
+    if (specifications.values !== undefined) updatePayload.specifications = specifications.values;
 
     const productQuery = Object.keys(updatePayload).length
       ? supabase.from("products").update(updatePayload).eq("id", body.id).select().single()

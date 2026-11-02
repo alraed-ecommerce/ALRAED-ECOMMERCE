@@ -8,6 +8,7 @@ export type StoreProduct = {
   price: number;
   image: string;
   description: string;
+  specifications: Record<string, string>;
   rating: number;
   reviews: number;
   stock: number;
@@ -69,6 +70,9 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
   const zohoSizeSkus = row.zoho_size_skus && typeof row.zoho_size_skus === "object" && !Array.isArray(row.zoho_size_skus)
     ? Object.fromEntries(Object.entries(row.zoho_size_skus).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
     : {};
+  const specifications = row.specifications && typeof row.specifications === "object" && !Array.isArray(row.specifications)
+    ? Object.fromEntries(Object.entries(row.specifications).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[0].trim().length > 0 && entry[1].trim().length > 0))
+    : {};
   const sizes = Array.isArray(row.sizes) ? row.sizes.filter((value): value is string => typeof value === "string") : [];
   const hasSizeStock = productType === "shoe" || (sizes.length > 0 && Object.keys(sizeStock).length > 0);
   return {
@@ -81,6 +85,7 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
     price: Number(row.price ?? 0),
     image: String(row.image_url ?? ""),
     description: String(row.description ?? ""),
+    specifications,
     rating: Number(row.rating ?? 0),
     reviews: Number(row.reviews ?? 0),
     stock: hasSizeStock ? Object.values(sizeStock).reduce((total, quantity) => total + quantity, 0) : Math.max(0, Number(row.stock ?? 0)),

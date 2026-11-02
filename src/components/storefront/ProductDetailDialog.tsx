@@ -11,27 +11,27 @@ const demoProductDetails: Record<string, { description: string; specifications: 
 
 function getProductDetails(product: StoreProduct): ProductDetails {
   const demoDetails = demoProductDetails[product.name];
-  if (demoDetails) {
-    return {
-      description: demoDetails.description,
-      specifications: Object.fromEntries(demoDetails.specifications),
-    };
-  }
-
   const categoryDetails: Record<string, string> = {
     Badminton: "Selected for fast footwork, sharp reactions and the rhythm of the rally. A dependable choice for your next training session or match.",
     Tennis: "Court-ready equipment selected to help you find your rhythm from first serve through match point.",
     Squash: "Built for quick movement and close-quarters control. A practical pick for training days and competitive rallies.",
     Accessories: "A considered court-side essential, selected to keep your kit organised and your next session running smoothly.",
   };
+  const customSpecifications = Object.fromEntries(
+    Object.entries(product.specifications).filter(([label, value]) => label.trim() && value.trim()),
+  );
+  const specifications = Object.keys(customSpecifications).length > 0
+    ? customSpecifications
+    : demoDetails
+      ? Object.fromEntries(demoDetails.specifications)
+      : {
+        Brand: product.brand || "Al Raed Sports",
+        Category: product.category,
+      };
 
   return {
-    description: product.description || `${product.name} by ${product.brand || "Al Raed Sports"}. ${categoryDetails[product.category] ?? "A court-ready essential, selected for your next session."}`,
-    specifications: {
-      Brand: product.brand || "Al Raed Sports",
-      Category: product.category,
-      "Technical specifications": "Contact us to confirm product-specific details",
-    },
+    description: product.description || demoDetails?.description || `${product.name} by ${product.brand || "Al Raed Sports"}. ${categoryDetails[product.category] ?? "A court-ready essential, selected for your next session."}`,
+    specifications,
   };
 }
 

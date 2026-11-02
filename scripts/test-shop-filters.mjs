@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const { getBrandOptions, normalizeBrand } = await import("../src/lib/store-products.ts");
+const { getBrandOptions, mapStoreProduct, normalizeBrand } = await import("../src/lib/store-products.ts");
 
 const products = [
   { brand: "YONEX", category: "Badminton" },
@@ -28,4 +28,17 @@ test("brand options combine duplicate casing and count products in the selected 
     ["wilson", "WILSON", 1],
     ["yonex", "Yonex", 2],
   ]);
+});
+
+test("store product mapping preserves customer-facing description and specifications", () => {
+  const product = mapStoreProduct({
+    id: 8,
+    name: "Court racquet",
+    category: "Badminton",
+    description: "A lightweight racquet.",
+    specifications: { Weight: "4U", Material: "Graphite" },
+  });
+
+  assert.equal(product.description, "A lightweight racquet.");
+  assert.deepEqual(product.specifications, { Weight: "4U", Material: "Graphite" });
 });

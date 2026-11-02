@@ -140,6 +140,7 @@ For an existing database, run these files in the Supabase SQL Editor, in order:
 7. `SUPABASE_HOME_CAMPAIGNS_MIGRATION.sql`
 8. `SUPABASE_ORDER_SUMMARY_COUPONS_MIGRATION.sql`
 9. `SUPABASE_ZOHO_STOCK_RECONCILIATION_MIGRATION.sql`
+10. `SUPABASE_PRODUCT_DETAILS_MIGRATION.sql`
 
 The first migration adds saved customer addresses and ensures Firebase user IDs have a non-partial unique index required by profile upserts. If account details fail to save on an existing database, rerun `SUPABASE_ACCOUNT_MIGRATION.sql` in the Supabase SQL Editor. The second adds server-only database functions that create orders using current Supabase product names/prices and atomically mark paid orders while deducting inventory. The third adds normalized unique product SKUs and Zoho product IDs, a stock-sync timestamp, and the server-only function used for atomic Zoho stock updates. The Zoho product ID is stored for admin billing/stock management and is not returned by the public product API. Apply this migration before creating or editing products with that field.
 
@@ -152,6 +153,8 @@ The seventh migration creates the homepage poster table and seeds it with the cu
 The eighth migration creates the private coupon table and adds order-summary fees, discounts, coupon redemption reservations, and checkout-attempt idempotency. Apply it after the Stripe checkout and product-variant migrations. Customers then review a server-priced order summary before Stripe payment; coupons are managed in the authorized admin dashboard. Orders with a product subtotal below AED 200 include AED 10 delivery and AED 2 handling fees. Both fees are waived when the product subtotal is AED 200 or more.
 
 The ninth migration depends on the Zoho stock and Stripe checkout migrations. It installs the corrected stock reconciliation function, the order field used to record a manually created Zoho invoice, and per-size Zoho stock mappings for shoes. It also adds a normalized size column to order items so pending paid shoe sales can be reconciled by size. Existing orders from before this migration are excluded from automatic deductions to avoid counting historical sales twice; manually reconcile any still-open historical invoices in Zoho before starting stock sync.
+
+The tenth migration adds editable product descriptions and custom technical specifications. Run it before deploying the matching admin and storefront changes. In Admin → Products, enter a customer-facing description and add named specification/detail pairs; these appear in the storefront product details.
 
 Do not use a client-provided price to create orders. The existing `/api/orders` route sends only product IDs and quantities to the database function. The service role key must remain server-only.
 
