@@ -110,9 +110,11 @@ function ShopProductCard({
         <button className={`ar-shop-wishlist ${liked ? "is-liked" : ""}`} type="button" onClick={() => onLike(product.id)} aria-label={`${liked ? "Remove" : "Add"} ${product.name} ${liked ? "from" : "to"} wishlist`}>
           <Heart size={17} fill={liked ? "currentColor" : "none"} />
         </button>
-        <button className="ar-shop-quick-add" type="button" onClick={() => onAdd(product)} disabled={product.stock < 1 || product.stockStatus === "unavailable"}>
-          {product.stockStatus === "unavailable" ? "UNAVAILABLE" : product.stock < 1 ? "SOLD OUT" : added ? <><Check size={14} /> ADDED TO BAG</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={14} /></> : <>QUICK ADD <Plus size={14} /></>}
-        </button>
+        {product.stockStatus !== "unavailable" && (
+          <button className="ar-shop-quick-add" type="button" onClick={() => onAdd(product)} disabled={product.stock < 1}>
+            {product.stock < 1 ? "SOLD OUT" : added ? <><Check size={14} /> ADDED TO BAG</> : hasProductOptions(product) ? <>CHOOSE OPTIONS <Plus size={14} /></> : <>QUICK ADD <Plus size={14} /></>}
+          </button>
+        )}
       </div>
       <div className="ar-shop-product-copy">
         <div className="ar-shop-product-meta"><span>{product.brand || "AL RAED SPORTS"}</span><span>{getProductType(product)}</span></div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, MessageCircle, Minus, Plus, ShoppingBag, X } from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, MessageCircle, Minus, Plus, ShoppingBag, X } from "lucide-react";
 import testProductDetails from "@/lib/test-product-details.json";
 import { isFootwearProduct, type StoreProduct } from "@/lib/store-products";
 
@@ -38,6 +38,18 @@ function getProductDetails(product: StoreProduct): ProductDetails {
 const money = (amount: number) =>
   new Intl.NumberFormat("en-AE", { style: "currency", currency: "AED", maximumFractionDigits: 0 }).format(amount);
 
+type ProductImageMagnifier = {
+  productId: number;
+  left: number;
+  top: number;
+  imageLeft: number;
+  imageTop: number;
+  imageWidth: number;
+  imageHeight: number;
+  imagePadding: number;
+  size: number;
+};
+
 export default function ProductDetailDialog({
   product,
   onClose,
@@ -49,6 +61,40 @@ export default function ProductDetailDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [selection, setSelection] = useState({ productId: 0, quantity: 1, color: "", size: "" });
+  const [imageSelection, setImageSelection] = useState({ productId: 0, index: 0 });
+  const [magnifier, setMagnifier] = useState<ProductImageMagnifier | null>(null);
+  const images = product
+    ? [...new Set([...(product.images ?? []), product.image].filter(Boolean))]
+    : [];
+  const activeImageIndex = product && imageSelection.productId === product.id && imageSelection.index < images.length
+    ? imageSelection.index
+    : 0;
+  const changeImage = (index: number) => {
+    if (product) {
+      setImageSelection({ productId: product.id, index });
+      setMagnifier(null);
+    }
+  };
+  const moveMagnifier = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "mouse" || images.length === 0) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const size = Math.min(220, bounds.width * .46, bounds.height * .46);
+    const zoom = 1.4;
+    const padding = Number.parseFloat(getComputedStyle(event.currentTarget).paddingTop) || 0;
+    const x = event.clientX - bounds.left;
+    const y = event.clientY - bounds.top;
+    setMagnifier({
+      productId: product?.id ?? 0,
+      left: Math.max(0, Math.min(bounds.width - size, x - size / 2)),
+      top: Math.max(0, Math.min(bounds.height - size, y - size / 2)),
+      imageLeft: size / 2 - x * zoom,
+      imageTop: size / 2 - y * zoom,
+      imageWidth: bounds.width * zoom,
+      imageHeight: bounds.height * zoom,
+      imagePadding: padding * zoom,
+      size,
+    });
+  };
   const quantity = product && selection.productId === product.id ? selection.quantity : 1;
   const selectedColor = product && selection.productId === product.id ? selection.color : "";
   const selectedSize = product && selection.productId === product.id ? selection.size : "";
@@ -123,9 +169,20 @@ export default function ProductDetailDialog({
     >
       {product && details && (
         <>
-          <div className="ar-product-detail-visual">
-            {product.image ? <img src={product.image} alt={product.name} /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
+          <div className={`ar-product-detail-visual${images.length > 1 ? " has-gallery" : ""}`}>
+            {images.length > 0 ? <img src={images[activeImageIndex]} alt={`${product.name} — image ${activeImageIndex + 1} of ${images.length}`} onPointerMove={moveMagnifier} onPointerLeave={() => setMagnifier(null)} /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
+            {magnifier && magnifier.productId === product.id && <span className="ar-product-image-magnifier" aria-hidden="true" style={{ left: magnifier.left, top: magnifier.top, width: magnifier.size, height: magnifier.size }}>
+              <img src={images[activeImageIndex]} alt="" style={{ left: magnifier.imageLeft, top: magnifier.imageTop, width: magnifier.imageWidth, height: magnifier.imageHeight, padding: magnifier.imagePadding }} />
+            </span>}
             <span className="ar-product-detail-category">{product.category}</span>
+            {images.length > 1 && <div className="ar-product-gallery" role="group" aria-label="Product images">
+              <button type="button" aria-label="Show previous product image" onClick={() => changeImage((activeImageIndex - 1 + images.length) % images.length)}><ArrowLeft size={16} /></button>
+              <div className="ar-product-gallery-thumbnails">
+                {images.map((image, index) => <button key={`${image}-${index}`} type="button" className={index === activeImageIndex ? "is-active" : ""} aria-label={`Show product image ${index + 1}`} aria-pressed={index === activeImageIndex} onClick={() => changeImage(index)}><img src={image} alt="" /></button>)}
+              </div>
+              <span className="ar-product-gallery-count" aria-live="polite">{activeImageIndex + 1} / {images.length}</span>
+              <button type="button" aria-label="Show next product image" onClick={() => changeImage((activeImageIndex + 1) % images.length)}><ArrowRight size={16} /></button>
+            </div>}
           </div>
           <section className="ar-product-detail-content">
             <button className="ar-product-detail-close" type="button" aria-label="Close product details" onClick={() => dialogRef.current?.close()}><X size={20} /></button>

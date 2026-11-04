@@ -30,6 +30,9 @@ const isZohoSizeProduct = (productType: (typeof allowedProductTypes)[number], si
   || (productType === "other" && apparelSizeCategories.includes(sizeCategory as (typeof apparelSizeCategories)[number]));
 const normalizeSku = (sku: string | null | undefined) => sku?.trim().toUpperCase() || null;
 const databaseErrorResponse = (error: { code?: string; message: string }) => {
+  if ((error.code === "42703" || error.code === "PGRST204") && /image_urls/i.test(error.message)) {
+    return NextResponse.json({ error: "Run SUPABASE_PRODUCT_IMAGES_MIGRATION.sql in Supabase to enable product image galleries." }, { status: 503 });
+  }
   if ((error.code === "42703" || error.code === "PGRST204") && /description|specifications/i.test(error.message)) {
     return NextResponse.json({ error: "Run SUPABASE_PRODUCT_DETAILS_MIGRATION.sql in Supabase before saving product descriptions and specifications." }, { status: 503 });
   }
@@ -61,6 +64,24 @@ const normalizeOptions = (value: unknown, label: string) => {
     return { values: undefined, error: `${label} options must be unique.` };
   }
   return { values, error: undefined };
+};
+const normalizeImageUrls = (value: unknown) => {
+  if (value === undefined) return { values: undefined as string[] | undefined, error: undefined };
+  if (!Array.isArray(value) || value.length > 10 || value.some((image) => typeof image !== "string")) {
+    return { values: undefined, error: "Add up to 10 valid product images." };
+  }
+  const images = value.map((image: string) => image.trim()).filter(Boolean);
+  if (images.some((image) => {
+    try {
+      const url = new URL(image);
+      return url.protocol !== "https:" && url.protocol !== "http:";
+    } catch {
+      return true;
+    }
+  })) {
+    return { values: undefined, error: "Product images must use valid HTTP or HTTPS URLs." };
+  }
+  return { values: [...new Set(images)], error: undefined };
 };
 const normalizeSpecifications = (value: unknown) => {
   if (value === undefined) return { values: undefined as Record<string, string> | undefined, error: undefined };
@@ -195,12 +216,17 @@ export async function POST(request: Request) {
       size_category?: unknown;
       description?: unknown;
       specifications?: unknown;
+      image_urls?: unknown;
     };
 
+    if (body.image_url !== undefined && typeof body.image_url !== "string") {
+      return NextResponse.json({ error: "Enter a valid product image URL." }, { status: 400 });
+    }
     const description = normalizeDescription(body.description);
     const specifications = normalizeSpecifications(body.specifications);
-    if (description.error || specifications.error) {
-      return NextResponse.json({ error: description.error || specifications.error }, { status: 400 });
+    const images = normalizeImageUrls(body.image_urls);
+    if (description.error || specifications.error || images.error) {
+      return NextResponse.json({ error: description.error || specifications.error || images.error }, { status: 400 });
     }
     if (body.sku !== undefined && body.sku !== null && typeof body.sku !== "string") {
       return NextResponse.json({ error: "Enter a valid SKU." }, { status: 400 });
@@ -277,8 +303,16 @@ export async function POST(request: Request) {
     if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
       return NextResponse.json({ error: "Enter a valid price." }, { status: 400 });
     }
-    if (!body.image_url?.trim()) {
+    const imageUrls = images.values ?? (body.image_url?.trim() ? [body.image_url.trim()] : []);
+    if (!imageUrls.length) {
       return NextResponse.json({ error: "Upload a product image before saving." }, { status: 400 });
+    }
+    if (body.image_url?.trim() && images.values && !images.values.includes(body.image_url.trim())) {
+      return NextResponse.json({ error: "The primary product image must be included in the product image gallery." }, { status: 400 });
+    }
+    const primaryImageUrl = body.image_url?.trim() || imageUrls[0];
+    if (normalizeImageUrls([primaryImageUrl]).error) {
+      return NextResponse.json({ error: "Enter a valid product image URL." }, { status: 400 });
     }
 
     const { data, error } = await supabase
@@ -288,7 +322,8 @@ export async function POST(request: Request) {
         brand: body.brand.trim(),
         category: body.category.trim(),
         price: numericPrice,
-        image_url: body.image_url.trim(),
+        image_url: primaryImageUrl,
+        image_urls: [primaryImageUrl, ...imageUrls.filter((image) => image !== primaryImageUrl)],
         description: description.value ?? "",
         specifications: specifications.values ?? {},
         stock: 0,
@@ -344,12 +379,14 @@ export async function PUT(request: Request) {
       size_category?: unknown;
       description?: unknown;
       specifications?: unknown;
+      image_urls?: unknown;
     };
 
     const description = normalizeDescription(body.description);
     const specifications = normalizeSpecifications(body.specifications);
-    if (description.error || specifications.error) {
-      return NextResponse.json({ error: description.error || specifications.error }, { status: 400 });
+    const images = normalizeImageUrls(body.image_urls);
+    if (description.error || specifications.error || images.error) {
+      return NextResponse.json({ error: description.error || specifications.error || images.error }, { status: 400 });
     }
     if (!body.id) return NextResponse.json({ error: "Product id is required." }, { status: 400 });
     const { data: existingProduct, error: existingProductError } = await supabase
@@ -505,7 +542,27 @@ export async function PUT(request: Request) {
         );
       }
     }
-    if (body.image_url !== undefined) updatePayload.image_url = body.image_url.trim();
+    if (body.image_url !== undefined && typeof body.image_url !== "string") {
+      return NextResponse.json({ error: "Enter a valid product image URL." }, { status: 400 });
+    }
+    if (body.image_url !== undefined && body.image_url.trim() && normalizeImageUrls([body.image_url]).error) {
+      return NextResponse.json({ error: "Enter a valid product image URL." }, { status: 400 });
+    }
+    if (images.values !== undefined) {
+      if (images.values.length === 0) {
+        return NextResponse.json({ error: "Keep at least one product image in the gallery." }, { status: 400 });
+      }
+      const primaryImageUrl = body.image_url?.trim() || images.values[0] || "";
+      if (primaryImageUrl && !images.values.includes(primaryImageUrl)) {
+        return NextResponse.json({ error: "The primary product image must be included in the product image gallery." }, { status: 400 });
+      }
+      updatePayload.image_urls = primaryImageUrl
+        ? [primaryImageUrl, ...images.values.filter((image) => image !== primaryImageUrl)]
+        : [];
+      updatePayload.image_url = primaryImageUrl;
+    } else if (body.image_url !== undefined) {
+      updatePayload.image_url = body.image_url.trim();
+    }
     if (body.is_active !== undefined) updatePayload.is_active = body.is_active;
     if (description.value !== undefined) updatePayload.description = description.value;
     if (specifications.values !== undefined) updatePayload.specifications = specifications.values;

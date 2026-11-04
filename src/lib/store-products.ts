@@ -7,6 +7,7 @@ export type StoreProduct = {
   category: string;
   price: number;
   image: string;
+  images: string[];
   description: string;
   specifications: Record<string, string>;
   rating: number;
@@ -75,6 +76,11 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
     : {};
   const sizes = Array.isArray(row.sizes) ? row.sizes.filter((value): value is string => typeof value === "string") : [];
   const hasSizeStock = productType === "shoe" || (sizes.length > 0 && Object.keys(sizeStock).length > 0);
+  const primaryImage = typeof row.image_url === "string" ? row.image_url.trim() : "";
+  const images = [...new Set([
+    ...(Array.isArray(row.image_urls) ? row.image_urls.filter((value): value is string => typeof value === "string").map((image) => image.trim()) : []),
+    primaryImage,
+  ].filter(Boolean))];
   return {
     id: Number(row.id),
     productType,
@@ -83,7 +89,8 @@ export function mapStoreProduct(row: Record<string, unknown>): StoreProduct {
     brand: String(row.brand ?? ""),
     category: String(row.category ?? ""),
     price: Number(row.price ?? 0),
-    image: String(row.image_url ?? ""),
+    image: images[0] ?? "",
+    images,
     description: String(row.description ?? ""),
     specifications,
     rating: Number(row.rating ?? 0),

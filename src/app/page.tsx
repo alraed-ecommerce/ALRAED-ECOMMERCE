@@ -66,7 +66,7 @@ function isCartLine(value: unknown): value is CartLine {
 }
 
 const categories = [
-  { name: "Badminton", note: "Find your flight", image: "/playerimage.jpeg" },
+  { name: "Badminton", note: "Find your flight", image: "/playerimage.avif" },
   { name: "Tennis", note: "Own the court", image: "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=900&q=85" },
   { name: "Squash", note: "Play at pace", image: "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=900&q=85" },
   { name: "Accessories", note: "The little things", image: "/product1.jpg" },

@@ -43,6 +43,19 @@ test("store product mapping preserves customer-facing description and specificat
   assert.deepEqual(product.specifications, { Weight: "4U", Material: "Graphite" });
 });
 
+test("store product mapping keeps ordered gallery images with the primary image first", () => {
+  const product = mapStoreProduct({
+    id: 10,
+    name: "Gallery racquet",
+    category: "Badminton",
+    image_url: "https://example.com/front.jpg",
+    image_urls: ["https://example.com/front.jpg", "https://example.com/side.jpg", "https://example.com/front.jpg"],
+  });
+
+  assert.equal(product.image, "https://example.com/front.jpg");
+  assert.deepEqual(product.images, ["https://example.com/front.jpg", "https://example.com/side.jpg"]);
+});
+
 test("store product mapping retains EU shoe sizes and synced per-size stock", () => {
   const product = mapStoreProduct({
     id: 9,

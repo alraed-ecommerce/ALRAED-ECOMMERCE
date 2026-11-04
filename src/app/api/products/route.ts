@@ -8,13 +8,16 @@ export async function GET() {
 
   const { data: products, error } = await supabase
     .from("products")
-    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, description, specifications, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
+    .select("id, product_type, size_category, size_stock, name, brand, category, price, image_url, image_urls, description, specifications, rating, reviews, stock, colors, sizes, unavailable_sizes, sku, zoho_product_id, zoho_stock_synced_at, zoho_size_skus, zoho_size_stock_synced_at")
     .eq("is_active", true)
     .in("category", ["Badminton", "Tennis", "Squash", "Accessories"])
     .order("created_at", { ascending: false });
 
   let productRows = products ?? [];
   if (error) {
+    if ((error.code === "42703" || error.code === "PGRST204") && /image_urls/i.test(error.message)) {
+      return NextResponse.json({ error: "Run SUPABASE_PRODUCT_IMAGES_MIGRATION.sql in Supabase to enable product image galleries." }, { status: 503 });
+    }
     if ((error.code === "42703" || error.code === "PGRST204") && /specifications/i.test(error.message)) {
       return NextResponse.json({ error: "Run SUPABASE_PRODUCT_DETAILS_MIGRATION.sql to enable product specifications." }, { status: 503 });
     }
@@ -34,6 +37,7 @@ export async function GET() {
     if (legacyError) return NextResponse.json({ error: legacyError.message }, { status: 500 });
     productRows = (legacyProducts ?? []).map((product) => ({
       ...product,
+      image_urls: null,
       product_type: null,
       size_category: null,
       size_stock: null,

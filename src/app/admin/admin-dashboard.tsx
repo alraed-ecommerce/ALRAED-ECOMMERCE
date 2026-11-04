@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, Clock3, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PackageCheck, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
@@ -9,11 +9,14 @@ import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } fr
 import { ALRAED_WHATSAPP_CONTACT, createWhatsAppOrderConfirmationLink, normalizeWhatsAppPhone } from "@/lib/whatsapp";
 import { getLowStockProducts, getOverdueOrders, type OrderStatusHistoryEntry } from "@/lib/order-operations";
 import { getShoeSizes, isShoeSizeCategory, shoeSizeCategories, shoeSizesByCategory, type ShoeSizeCategory } from "@/lib/shoe-sizes";
+import { mapStoreProduct, type StoreProduct } from "@/lib/store-products";
+import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
 import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
 import InsightsDashboard from "./insights-dashboard";
+import OrderFulfillmentBoard from "./order-fulfillment-board";
 
-type AdminSection = "insights" | "products" | "orders" | "posters" | "coupons";
+type AdminSection = "insights" | "products" | "orders" | "posters" | "coupons" | "fulfillment";
 
 const adminSections: Array<{ id: AdminSection; href: string; label: string; description: string; Icon: typeof Package }> = [
   { id: "insights", href: "/admin/insights", label: "Insights", description: "Sales and operations", Icon: BarChart3 },
@@ -21,6 +24,7 @@ const adminSections: Array<{ id: AdminSection; href: string; label: string; desc
   { id: "orders", href: "/admin/orders", label: "Orders", description: "Customer purchases", Icon: ClipboardList },
   { id: "posters", href: "/admin/posters", label: "Campaigns", description: "Homepage content", Icon: PanelsTopLeft },
   { id: "coupons", href: "/admin/coupons", label: "Coupons", description: "Discount codes", Icon: Tag },
+  { id: "fulfillment", href: "/admin/fulfillment", label: "Future Implementation", description: "Order fulfillment tracking", Icon: PackageCheck },
 ];
 const sectionIntros: Record<AdminSection, string> = {
   insights: "Track sales performance, customer trends, order operations, and inventory health.",
@@ -28,6 +32,7 @@ const sectionIntros: Record<AdminSection, string> = {
   orders: "Review customer purchases and keep fulfillment moving.",
   posters: "Create and organize the campaigns featured on your homepage.",
   coupons: "Create discount codes and track their use.",
+  fulfillment: "Track paid orders from packing through courier handoff and delivery.",
 };
 
 type Product = {
@@ -39,6 +44,7 @@ type Product = {
   zoho_product_id?: string | null;
   price: number;
   image_url?: string | null;
+  image_urls?: string[] | null;
   stock: number;
   is_active?: boolean;
   description?: string | null;
@@ -371,6 +377,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [signingIn, setSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [paidOrderCount, setPaidOrderCount] = useState(0);
+  const [newPaidOrderAlert, setNewPaidOrderAlert] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [lowStockThreshold, setLowStockThreshold] = useState(3);
   const [operationsError, setOperationsError] = useState<string | null>(null);
@@ -386,6 +394,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [editingProductColors, setEditingProductColors] = useState("");
   const [editingProductDescription, setEditingProductDescription] = useState("");
   const [editingProductSpecifications, setEditingProductSpecifications] = useState<ProductSpecification[]>([{ label: "", value: "" }]);
+  const [editingProductImages, setEditingProductImages] = useState<string[]>([]);
+  const [previewProduct, setPreviewProduct] = useState<StoreProduct | null>(null);
   const [savingEditedProductId, setSavingEditedProductId] = useState<number | null>(null);
   const [productNotice, setProductNotice] = useState<string | null>(null);
   const [stockReportError, setStockReportError] = useState<string | null>(null);
@@ -409,6 +419,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     zoho_size_skus: {} as Record<string, string>,
     price: "",
     image_url: "",
+    image_urls: [] as string[],
     description: "",
     specifications: [{ label: "", value: "" }] as ProductSpecification[],
   });
@@ -416,6 +427,10 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [savingProduct, setSavingProduct] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const orderStatusesRef = useRef(new Map<string, string>());
+  const hasLoadedOrderSnapshotRef = useRef(false);
+  const paidOrderIdsRef = useRef(new Set<string>());
+  const hasLoadedPaidOrderIdsRef = useRef(false);
 
   const visibleOrders = orders.filter((order) => {
     const matchesName = order.customer_name.toLowerCase().includes(orderSearch.trim().toLowerCase());
@@ -432,6 +447,55 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const editingSizeValues = editingSizeCategory
     ? editingSizeValuesByCategory[editingSizeCategory] ?? { stock: {}, skus: {}, syncedAt: {} }
     : { stock: {}, skus: {}, syncedAt: {} };
+  const previewSizes = productForm.size_category ? getSizes(productForm.size_category) : [];
+  const productPreview = mapStoreProduct({
+    id: -1,
+    name: productForm.name.trim() || "Your product name",
+    brand: productForm.brand.trim() || "Your brand",
+    category: productForm.category,
+    price: Number(productForm.price) || 0,
+    image_url: productForm.image_url,
+    image_urls: productForm.image_urls,
+    description: productForm.description.trim(),
+    specifications: Object.fromEntries(productForm.specifications.filter(({ label, value }) => label.trim() && value.trim()).map(({ label, value }) => [label.trim(), value.trim()])),
+    product_type: productForm.product_type || "other",
+    size_category: productForm.size_category,
+    sizes: previewSizes,
+    size_stock: Object.fromEntries(previewSizes.map((size) => [size, 5])),
+    stock: 5,
+    stock_status: "verified",
+  });
+  const previewProductDetails = {
+    description: productPreview.description || `${productPreview.name} by ${productPreview.brand || "Al Raed Sports"}. ${({
+      Badminton: "Selected for fast footwork, sharp reactions and the rhythm of the rally. A dependable choice for your next training session or match.",
+      Tennis: "Court-ready equipment selected to help you find your rhythm from first serve through match point.",
+      Squash: "Built for quick movement and close-quarters control. A practical pick for training days and competitive rallies.",
+      Accessories: "A considered court-side essential, selected to keep your kit organised and your next session running smoothly.",
+    } as Record<string, string>)[productPreview.category] ?? "A court-ready essential, selected for your next session."}`,
+    specifications: Object.keys(productPreview.specifications).length > 0
+      ? productPreview.specifications
+      : { Brand: productPreview.brand || "Al Raed Sports", Category: productPreview.category },
+  };
+  const productCardPreviews = [
+    ...products.filter((product) => product.is_active && product.image_url).slice(0, 2).map((product) => ({
+      id: product.id,
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      price: product.price,
+      image: product.image_url ?? "",
+      isDraft: false,
+    })),
+    {
+      id: productPreview.id,
+      name: productPreview.name,
+      brand: productPreview.brand,
+      category: productPreview.category,
+      price: productPreview.price,
+      image: productPreview.image,
+      isDraft: true,
+    },
+  ];
 
   const recentlySoldProductIds = useMemo(() => {
     const productIds = new Set(products.map((product) => product.id));
@@ -504,12 +568,36 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     }
   };
 
-  const loadOrders = async (token: string) => {
+  const applyOrderSnapshot = useCallback((nextOrders: Order[]) => {
+    if (hasLoadedOrderSnapshotRef.current) {
+      const newPaidOrders = nextOrders.filter((order) => order.status === "paid" && orderStatusesRef.current.get(order.id) !== "paid");
+      if (newPaidOrders.length > 0) setNewPaidOrderAlert(newPaidOrders.length);
+    }
+    orderStatusesRef.current = new Map(nextOrders.map((order) => [order.id, order.status]));
+    hasLoadedOrderSnapshotRef.current = true;
+    const paidOrders = nextOrders.filter((order) => order.status === "paid");
+    paidOrderIdsRef.current = new Set(paidOrders.map((order) => order.id));
+    hasLoadedPaidOrderIdsRef.current = true;
+    setPaidOrderCount(paidOrders.length);
+    setOrders(nextOrders);
+  }, []);
+
+  const loadOrders = useCallback(async (token: string) => {
     const response = await fetch("/api/admin/orders", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Unable to load orders.");
-    setOrders(result.orders ?? []);
-  };
+    applyOrderSnapshot((result.orders ?? []) as Order[]);
+  }, [applyOrderSnapshot]);
+
+  const loadFulfillmentOrders = useCallback(async (token: string) => {
+    const response = await fetch("/api/admin/orders?view=fulfillment", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to load fulfillment orders.");
+    applyOrderSnapshot((result.orders ?? []) as Order[]);
+  }, [applyOrderSnapshot]);
 
   const loadProducts = async (token: string) => {
     const response = await fetch("/api/admin/products", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
@@ -533,6 +621,13 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       setUser(currentUser);
       if (!currentUser) {
         setIsAdmin(false);
+        hasLoadedOrderSnapshotRef.current = false;
+        orderStatusesRef.current.clear();
+        paidOrderIdsRef.current.clear();
+        hasLoadedPaidOrderIdsRef.current = false;
+        setPaidOrderCount(0);
+        setOrders([]);
+        setNewPaidOrderAlert(0);
         setLoading(false);
         return;
       }
@@ -562,6 +657,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           } catch (error) {
             setOperationsError(error instanceof Error ? error.message : "Unable to load current inventory warnings.");
           }
+        } else if (section === "fulfillment") {
+          await loadFulfillmentOrders(token);
         }
       } catch (error) {
         setIsAdmin(false);
@@ -570,7 +667,70 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         setLoading(false);
       }
     });
-  }, [section]);
+  }, [loadFulfillmentOrders, loadOrders, section]);
+
+  useEffect(() => {
+    if (!user || !isAdmin || section !== "fulfillment") return;
+    let active = true;
+    let loadingOrders = false;
+    const refreshOrders = async () => {
+      if (loadingOrders) return;
+      loadingOrders = true;
+      try {
+        const token = await user.getIdToken();
+        await loadFulfillmentOrders(token);
+      } catch (error) {
+        if (active) setAuthError(error instanceof Error ? error.message : "Unable to refresh fulfillment orders.");
+      } finally {
+        loadingOrders = false;
+      }
+    };
+    const interval = window.setInterval(() => void refreshOrders(), 20_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isAdmin, loadFulfillmentOrders, section, user]);
+
+  useEffect(() => {
+    if (!user || !isAdmin || section === "fulfillment") return;
+    let active = true;
+    let loadingNotifications = false;
+    const refreshPaidOrderNotifications = async () => {
+      if (loadingNotifications) return;
+      loadingNotifications = true;
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch("/api/admin/orders?view=fulfillment-notifications", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to refresh paid-order notifications.");
+        if (!active) return;
+        const paidOrderIds = Array.isArray(result.paidOrderIds)
+          ? result.paidOrderIds.filter((id: unknown): id is string => typeof id === "string")
+          : [];
+        if (hasLoadedPaidOrderIdsRef.current) {
+          const newlyPaidCount = paidOrderIds.filter((id: string) => !paidOrderIdsRef.current.has(id)).length;
+          if (newlyPaidCount > 0) setNewPaidOrderAlert(newlyPaidCount);
+        }
+        paidOrderIdsRef.current = new Set(paidOrderIds);
+        hasLoadedPaidOrderIdsRef.current = true;
+        setPaidOrderCount(paidOrderIds.length);
+      } catch (error) {
+        if (active) setAuthError(error instanceof Error ? error.message : "Unable to refresh paid-order notifications.");
+      } finally {
+        loadingNotifications = false;
+      }
+    };
+    void refreshPaidOrderNotifications();
+    const interval = window.setInterval(() => void refreshPaidOrderNotifications(), 20_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isAdmin, section, user]);
 
   const handleGoogleAdminLogin = async () => {
     setAuthError(null);
@@ -591,8 +751,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     router.push("/");
   };
 
-  const updateOrderStatus = async (orderId: string, status: string) => {
-    if (!user) return;
+  const updateOrderStatus = async (orderId: string, status: string): Promise<boolean> => {
+    if (!user) return false;
     setBusyOrderId(orderId);
     try {
       const token = await user.getIdToken();
@@ -605,12 +765,15 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       if (!response.ok) throw new Error(result.error || "Unable to update order.");
       setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status } : order));
       try {
-        await loadOrders(token);
+        if (section === "fulfillment") await loadFulfillmentOrders(token);
+        else await loadOrders(token);
       } catch {
         setAuthError("Order status was updated, but its history could not be refreshed. Reload the page to verify the latest activity.");
       }
+      return true;
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to update order.");
+      return false;
     } finally {
       setBusyOrderId(null);
     }
@@ -693,6 +856,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         zoho_size_skus: {},
         price: "",
         image_url: "",
+        image_urls: [],
         description: "",
         specifications: [{ label: "", value: "" }],
       });
@@ -731,9 +895,9 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     }
   };
 
-  const uploadProductImage = async (file?: File) => {
-    if (!user || !file) return;
-    setUploadingImage(true);
+  const uploadProductImage = async (file?: File, manageUploadingState = true, editingProductId?: number): Promise<boolean> => {
+    if (!user || !file) return false;
+    if (manageUploadingState) setUploadingImage(true);
     setAuthError(null);
     try {
       const token = await user.getIdToken();
@@ -746,15 +910,45 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to upload product image.");
-      setProductForm((current) => ({ ...current, image_url: result.imageUrl }));
+      if (editingProductId === undefined) {
+        setProductForm((current) => ({
+          ...current,
+          image_url: current.image_url || result.imageUrl,
+          image_urls: [...current.image_urls, result.imageUrl],
+        }));
+      } else {
+        setEditingProductImages((current) => [...current, result.imageUrl]);
+      }
+      return true;
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to upload product image.");
+      return false;
+    } finally {
+      if (manageUploadingState) setUploadingImage(false);
+    }
+  };
+
+  const uploadProductImages = async (fileList?: FileList | null, editingProductId?: number) => {
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
+    const currentImages = editingProductId === undefined ? productForm.image_urls : editingProductImages;
+    if (currentImages.length + files.length > 10) {
+      setAuthError("A product can have up to 10 images.");
+      return;
+    }
+    setUploadingImage(true);
+    setAuthError(null);
+    try {
+      for (const file of files) {
+        if (!await uploadProductImage(file, false, editingProductId)) break;
+      }
     } finally {
       setUploadingImage(false);
     }
   };
 
   const toggleProductEditor = (product: Product) => {
+    if (uploadingImage) return;
     if (editingProductId === product.id) {
       setEditingProductId(null);
       return;
@@ -777,6 +971,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
     setEditingProductColors(product.colors?.join(", ") ?? "");
     setEditingProductDescription(product.description ?? "");
     setEditingProductSpecifications(getSpecificationRows(product.specifications));
+    setEditingProductImages(product.image_urls?.length ? product.image_urls : product.image_url ? [product.image_url] : []);
   };
 
   const saveProductEditor = async (product: Product, isActive = Boolean(product.is_active)) => {
@@ -810,6 +1005,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           id: product.id,
+          image_url: editingProductImages[0] ?? "",
+          image_urls: editingProductImages,
           product_type: editingProductType,
           size_category: isZohoSizeProduct(editingProductType, editingSizeCategory) ? editingSizeCategory : null,
           name,
@@ -902,6 +1099,11 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
               <Link key={id} href={href} aria-current={section === id ? "page" : undefined} className={`admin-nav-link${section === id ? " is-active" : ""}`}>
                 <span className="admin-nav-icon"><Icon size={18} aria-hidden="true" /></span>
                 <span className="admin-nav-copy"><strong>{label}</strong><small>{description}</small></span>
+                {id === "fulfillment" && paidOrderCount > 0 && (
+                  <span className="admin-nav-count" aria-label={`${paidOrderCount} paid orders to pack`} aria-live="polite">
+                    {paidOrderCount}
+                  </span>
+                )}
                 {section === id && <span className="admin-nav-indicator" aria-hidden="true" />}
               </Link>
             ))}
@@ -939,6 +1141,13 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         {section === "posters" && user && <HomeCampaignManager user={user} />}
         {section === "coupons" && user && <CouponManager user={user} />}
         {section === "insights" && user && <InsightsDashboard user={user} />}
+        {section === "fulfillment" && <OrderFulfillmentBoard
+          orders={orders}
+          busyOrderId={busyOrderId}
+          newPaidOrderAlert={newPaidOrderAlert}
+          onDismissAlert={() => setNewPaidOrderAlert(0)}
+          onStatusChange={updateOrderStatus}
+        />}
 
         {section === "orders" && <section id="customer-orders" className="mb-8 scroll-mt-6 rounded-3xl border border-sky-400/20 bg-slate-900 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1321,10 +1530,73 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">Product image</h3>
                     <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-300 hover:border-sky-400">
                       <ImagePlus size={18} className="shrink-0 text-sky-300" />
-                      <span className="min-w-0 flex-1 truncate">{uploadingImage ? "Uploading image..." : productForm.image_url ? "Image uploaded. Choose another" : "Upload JPG, PNG or WebP · max 5 MB"}</span>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingImage} onChange={(event) => void uploadProductImage(event.target.files?.[0])} />
+                      <span className="min-w-0 flex-1 truncate">{uploadingImage ? "Uploading images..." : productForm.image_urls.length ? `${productForm.image_urls.length} of 10 images · Add more` : "Upload JPG, PNG or WebP · max 5 MB each · up to 10 images"}</span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" disabled={uploadingImage} onChange={(event) => { void uploadProductImages(event.target.files); event.target.value = ""; }} />
                     </label>
-                    {productForm.image_url && <img src={productForm.image_url} alt="Product preview" className="h-40 w-full rounded-xl border border-slate-800 bg-slate-950 object-contain" />}
+                    {productForm.image_urls.length > 0 && <div className="admin-product-image-list">
+                      {productForm.image_urls.map((imageUrl, index) => (
+                        <div className="admin-product-image-item" key={imageUrl}>
+                          <img src={imageUrl} alt={`Product image ${index + 1}`} />
+                          <div>
+                            <strong>{index === 0 ? "Cover image" : `Image ${index + 1}`}</strong>
+                            {index !== 0 && <button type="button" onClick={() => setProductForm((current) => ({ ...current, image_url: imageUrl, image_urls: [imageUrl, ...current.image_urls.filter((image) => image !== imageUrl)] }))}>Make cover</button>}
+                            <button type="button" aria-label={`Remove product image ${index + 1}`} onClick={() => setProductForm((current) => {
+                              const image_urls = current.image_urls.filter((image) => image !== imageUrl);
+                              return { ...current, image_urls, image_url: current.image_url === imageUrl ? image_urls[0] ?? "" : current.image_url };
+                            })}>Remove</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>}
+                    <p className="text-[11px] leading-relaxed text-slate-500">Images keep their original proportions and fit inside the store frames without being cropped. A sharp, centered square or portrait photo on a clean background works best.</p>
+                  </section>
+                  <section className="admin-product-live-previews" aria-label="Live storefront previews">
+                    <div className="admin-product-live-previews-heading">
+                      <div><h3>Live storefront preview</h3><p>Updates as you edit. See the draft beside live products, then click it to open the full details.</p></div>
+                      <span>PREVIEW ONLY</span>
+                    </div>
+                    <div className="admin-product-preview-grid">
+                      <article className="admin-product-preview-panel">
+                        <h4>Shopping page card</h4>
+                        <div className="admin-storefront-card-preview ar-store">
+                          <div className="admin-storefront-card-grid">
+                            {productCardPreviews.map((preview) => (
+                              <article className={`ar-shop-product${preview.isDraft ? " is-draft" : ""}`} key={preview.id}>
+                                <div className="ar-shop-product-image">
+                                  {preview.isDraft ? <button type="button" className="ar-shop-product-open" onClick={() => setPreviewProduct(productPreview)} aria-label="Open product details preview">
+                                    {preview.image ? <img src={preview.image} alt="" /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
+                                  </button> : preview.image ? <img src={preview.image} alt="" /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
+                                </div>
+                                <div className="ar-shop-product-copy">
+                                  <div className="ar-shop-product-meta"><span>{preview.brand || "AL RAED SPORTS"}</span><span>{preview.category.toUpperCase()}</span></div>
+                                  {preview.isDraft ? <button className="ar-shop-product-title" type="button" onClick={() => setPreviewProduct(productPreview)}>{preview.name.replace(/^\[TEST\]\s*/, "")}</button> : <strong className="admin-storefront-preview-title">{preview.name}</strong>}
+                                  <div className="ar-shop-product-bottom"><strong>{money(preview.price)}</strong></div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      </article>
+                      <article className="admin-product-preview-panel">
+                        <h4>Product details box</h4>
+                        <div className="admin-storefront-detail-preview ar-store">
+                          <div className="ar-product-detail-visual">
+                            {productPreview.image ? <img src={productPreview.image} alt="" /> : <span className="ar-product-placeholder">AL RAED<br />SPORTS</span>}
+                            <span className="ar-product-detail-category">{productPreview.category}</span>
+                          </div>
+                          <section className="ar-product-detail-content">
+                            <p className="ar-eyebrow">{productPreview.brand || "AL RAED SPORTS"} · {productPreview.category.toUpperCase()}</p>
+                            <h2>{productPreview.name.replace(/^\[TEST\]\s*/, "")}</h2>
+                            <p className="ar-product-detail-description">{previewProductDetails.description}</p>
+                            <div className="ar-product-detail-price"><strong>{money(productPreview.price)}</strong><span className="is-in-stock">IN STOCK</span></div>
+                            <div className="admin-product-preview-specs">
+                              {Object.entries(previewProductDetails.specifications).slice(0, 2).map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+                            </div>
+                            <p className="admin-product-preview-note">Click the shopping card to test the full details dialog.</p>
+                          </section>
+                        </div>
+                      </article>
+                    </div>
                   </section>
                   <button type="button" onClick={() => void saveProduct()} disabled={savingProduct || uploadingImage || !productForm.image_url} className="admin-action-button admin-action-primary w-full">
                     <Save size={16} aria-hidden="true" />
@@ -1378,7 +1650,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
             <div className="space-y-3">
               {products.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">No products yet.</div> : visibleProducts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">{productSearch.trim() ? "No products match this search." : productListView === "recent" ? "No recent sales found. Choose Show all products to browse inventory." : "No products match this visibility filter."}</div> : visibleProducts.map((product) => (
                 <div key={product.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
-                  <button type="button" onClick={() => toggleProductEditor(product)} aria-expanded={editingProductId === product.id} className="flex w-full items-center gap-3 p-3 text-left transition hover:bg-slate-900">
+                  <button type="button" onClick={() => toggleProductEditor(product)} disabled={uploadingImage} aria-expanded={editingProductId === product.id} className="flex w-full items-center gap-3 p-3 text-left transition hover:bg-slate-900 disabled:cursor-wait disabled:opacity-60">
                     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-800">
                       {product.image_url ? <img src={product.image_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-400">IMG</div>}
                     </div>
@@ -1421,6 +1693,26 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                         <div><h3 className="text-xs font-semibold text-slate-300">Technical specifications</h3><p className="mt-1 text-[11px] text-slate-500">These details appear in the product information on your storefront.</p></div>
                         <ProductSpecificationsEditor rows={editingProductSpecifications} onChange={setEditingProductSpecifications} idPrefix={`edit-product-${product.id}`} />
                       </div>
+                      <section className="space-y-2 sm:col-span-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">Product image gallery</h3>
+                        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-300 hover:border-sky-400">
+                          <ImagePlus size={18} className="shrink-0 text-sky-300" />
+                          <span className="min-w-0 flex-1 truncate">{uploadingImage ? "Uploading images..." : `${editingProductImages.length} of 10 images · Add more`}</span>
+                          <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" disabled={uploadingImage} onChange={(event) => { void uploadProductImages(event.target.files, product.id); event.target.value = ""; }} />
+                        </label>
+                        <div className="admin-product-image-list">
+                          {editingProductImages.map((imageUrl, index) => (
+                            <div className="admin-product-image-item" key={imageUrl}>
+                              <img src={imageUrl} alt={`Product image ${index + 1}`} />
+                              <div>
+                                <strong>{index === 0 ? "Cover image" : `Image ${index + 1}`}</strong>
+                                {index !== 0 && <button type="button" onClick={() => setEditingProductImages((current) => [imageUrl, ...current.filter((image) => image !== imageUrl)])}>Make cover</button>}
+                                <button type="button" disabled={editingProductImages.length <= 1} aria-label={`Remove product image ${index + 1}`} onClick={() => setEditingProductImages((current) => current.filter((image) => image !== imageUrl))}>Remove</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
                       {editingProductType === "racquet" && <label className="grid gap-2 text-xs font-semibold text-slate-400 sm:col-span-2">
                         Colors <span className="font-normal text-slate-500">Separate colors with commas</span>
                         <input value={editingProductColors} onChange={(event) => setEditingProductColors(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="Black, White, Red" />
@@ -1475,8 +1767,8 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       </label></>}
                       {(isZohoSizeProduct(editingProductType, editingSizeCategory) || (product.sku || product.zoho_product_id)) && <p className="text-xs text-slate-400 sm:col-span-2">Zoho stock is read-only and updates during stock sync.</p>}
                       <div className="flex flex-wrap gap-2 sm:col-span-2">
-                        <button type="button" onClick={() => void saveProductEditor(product)} disabled={savingEditedProductId === product.id} className="admin-action-button admin-action-primary"><Save size={15} aria-hidden="true" /> Save changes</button>
-                        <button type="button" onClick={() => void saveProductEditor(product, !product.is_active)} disabled={savingEditedProductId === product.id} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{savingEditedProductId === product.id ? "Saving..." : product.is_active ? "Save & hide" : "Save & publish"}</button>
+                        <button type="button" onClick={() => void saveProductEditor(product)} disabled={savingEditedProductId === product.id || uploadingImage} className="admin-action-button admin-action-primary"><Save size={15} aria-hidden="true" /> Save changes</button>
+                        <button type="button" onClick={() => void saveProductEditor(product, !product.is_active)} disabled={savingEditedProductId === product.id || uploadingImage} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{savingEditedProductId === product.id ? "Saving..." : product.is_active ? "Save & hide" : "Save & publish"}</button>
                       </div>
                     </div>
                   )}
@@ -1489,6 +1781,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           </div>
         </div>
       </div>
+      {section === "products" && <ProductDetailDialog product={previewProduct} onClose={() => setPreviewProduct(null)} onAdd={() => setPreviewProduct(null)} />}
       <button className="ar-floating-button ar-floating-top admin-back-to-top" type="button" aria-label="Scroll to top" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
         <ArrowUp size={15} />
       </button>

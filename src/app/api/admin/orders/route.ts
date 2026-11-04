@@ -19,6 +19,38 @@ export async function GET(request: Request) {
     const supabase = createAdminSupabase();
     if (!supabase) return NextResponse.json({ error: "Order storage is not configured." }, { status: 500 });
 
+    if (new URL(request.url).searchParams.get("view") === "fulfillment-notifications") {
+      const { data: paidOrders, error: notificationError } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("status", "paid");
+
+      if (notificationError) {
+        console.error("Unable to load paid-order notification counts.", notificationError.message);
+        return NextResponse.json({ error: "Unable to load paid-order notifications." }, { status: 500 });
+      }
+
+      return NextResponse.json({ paidOrderIds: (paidOrders ?? []).map((order) => order.id) });
+    }
+
+    if (new URL(request.url).searchParams.get("view") === "fulfillment") {
+      const { data: fulfillmentOrders, error: fulfillmentError } = await supabase
+        .from("orders")
+        .select("id, customer_name, customer_phone, city, address, total, status, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, order_items(id, product_name, quantity, unit_price)")
+        .in("status", ["paid", "processing", "shipped", "delivered"])
+        .order("created_at", { ascending: true });
+
+      if (fulfillmentError) {
+        console.error("Unable to load fulfillment orders.", fulfillmentError.message);
+        if (fulfillmentError.code === "42703") {
+          return NextResponse.json({ error: "Run SUPABASE_STRIPE_CHECKOUT_MIGRATION.sql to enable order payment details." }, { status: 503 });
+        }
+        return NextResponse.json({ error: "Unable to load fulfillment orders." }, { status: 500 });
+      }
+
+      return NextResponse.json({ orders: fulfillmentOrders ?? [] });
+    }
+
     const { data: orders, error } = await supabase
       .from("orders")
       .select("id, user_id, customer_name, customer_phone, city, address, total, status, notes, created_at, stripe_payment_intent_id, stripe_payment_method, stripe_paid_at, zoho_invoice_recorded_at, order_items(id, product_id, product_name, quantity, unit_price)")
