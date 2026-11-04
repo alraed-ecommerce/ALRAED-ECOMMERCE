@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import { activityLogFailureResponse, recordAdminActivity } from "@/lib/admin-activity";
 import { validateHomeCampaign } from "@/lib/home-campaigns";
-import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
+import { createAdminSupabase, getFirebaseIdentity, type FirebaseIdentity } from "@/lib/server-auth";
 
 const migrationError = "Run SUPABASE_HOME_CAMPAIGNS_MIGRATION.sql in the Supabase SQL Editor to enable homepage posters.";
 
@@ -12,16 +13,16 @@ function databaseErrorResponse(error: { code?: string; message: string }) {
   return NextResponse.json({ error: "Unable to save homepage posters." }, { status: 500 });
 }
 
-async function authorize(request: Request) {
+async function authorize(request: Request): Promise<FirebaseIdentity | NextResponse> {
   const identity = await getFirebaseIdentity(request);
   if (!identity) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isAdminEmail(identity.email)) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  return null;
+  return identity;
 }
 
 export async function GET(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
 
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Poster storage is not configured." }, { status: 500 });
@@ -39,8 +40,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
 
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Poster storage is not configured." }, { status: 500 });
@@ -78,12 +79,20 @@ export async function POST(request: Request) {
     .single();
 
   if (error) return databaseErrorResponse(error);
+  const activityError = await recordAdminActivity(supabase, identity, {
+    action: "campaign.created",
+    entity_type: "campaign",
+    entity_id: data.id,
+    entity_label: `${data.title} ${data.title_emphasis}`.trim(),
+    details: { changes: { ...validation.fields, display_order: displayOrder, is_active: body.is_active ?? true } },
+  });
+  if (activityError) return activityLogFailureResponse("campaign creation");
   return NextResponse.json({ campaign: data }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
 
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Poster storage is not configured." }, { status: 500 });
@@ -137,12 +146,20 @@ export async function PATCH(request: Request) {
     if (error.code === "PGRST116") return NextResponse.json({ error: "Poster not found." }, { status: 404 });
     return databaseErrorResponse(error);
   }
+  const activityError = await recordAdminActivity(supabase, identity, {
+    action: "campaign.updated",
+    entity_type: "campaign",
+    entity_id: data.id,
+    entity_label: `${data.title} ${data.title_emphasis}`.trim(),
+    details: { changes: update, changedFields: Object.keys(update).filter((key) => key !== "updated_at") },
+  });
+  if (activityError) return activityLogFailureResponse("campaign update");
   return NextResponse.json({ campaign: data });
 }
 
 export async function DELETE(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
 
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Poster storage is not configured." }, { status: 500 });
@@ -158,6 +175,14 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Choose a poster to delete." }, { status: 400 });
   }
 
+  const { data: campaign, error: loadError } = await supabase
+    .from("home_campaigns")
+    .select("id, title, title_emphasis")
+    .eq("id", body.id.trim())
+    .maybeSingle();
+  if (loadError) return databaseErrorResponse(loadError);
+  if (!campaign) return NextResponse.json({ error: "Poster not found." }, { status: 404 });
+
   const { error, count } = await supabase
     .from("home_campaigns")
     .delete({ count: "exact" })
@@ -165,5 +190,13 @@ export async function DELETE(request: Request) {
 
   if (error) return databaseErrorResponse(error);
   if (count === 0) return NextResponse.json({ error: "Poster not found." }, { status: 404 });
+  const activityError = await recordAdminActivity(supabase, identity, {
+    action: "campaign.deleted",
+    entity_type: "campaign",
+    entity_id: campaign.id,
+    entity_label: `${campaign.title} ${campaign.title_emphasis}`.trim(),
+    details: { summary: "Deleted homepage campaign" },
+  });
+  if (activityError) return activityLogFailureResponse("campaign deletion");
   return NextResponse.json({ success: true });
 }

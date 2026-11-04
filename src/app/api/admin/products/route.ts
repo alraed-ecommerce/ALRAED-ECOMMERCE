@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import { activityLogFailureResponse, recordAdminActivity } from "@/lib/admin-activity";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 import { shoeSizeCategories, shoeSizesByCategory } from "@/lib/shoe-sizes";
 import { getZohoLowStockThreshold } from "@/lib/zoho-stock-policy";
@@ -193,7 +194,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await ensureAdmin(request);
+    const identity = await ensureAdmin(request);
     const supabase = createAdminSupabase();
     if (!supabase) return NextResponse.json({ error: "Product storage is not configured." }, { status: 500 });
 
@@ -346,6 +347,33 @@ export async function POST(request: Request) {
       .single();
 
     if (error) return databaseErrorResponse(error);
+    const activityError = await recordAdminActivity(supabase, identity, {
+      action: "product.created",
+      entity_type: "product",
+      entity_id: String(data.id),
+      entity_label: data.name,
+      details: {
+        changes: {
+          name: data.name,
+          brand: data.brand,
+          category: data.category,
+          price: data.price,
+          image_url: data.image_url,
+          image_urls: data.image_urls,
+          sku: data.sku,
+          product_type: data.product_type,
+          size_category: data.size_category,
+          sizes: data.sizes,
+          colors: data.colors,
+          unavailable_sizes: data.unavailable_sizes,
+          zoho_size_skus: data.zoho_size_skus,
+          description: data.description,
+          specifications: data.specifications,
+          is_active: data.is_active,
+        },
+      },
+    });
+    if (activityError) return activityLogFailureResponse("product creation");
     return NextResponse.json({ product: data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";
@@ -355,7 +383,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    await ensureAdmin(request);
+    const identity = await ensureAdmin(request);
     const supabase = createAdminSupabase();
     if (!supabase) return NextResponse.json({ error: "Product storage is not configured." }, { status: 500 });
 
@@ -573,6 +601,16 @@ export async function PUT(request: Request) {
     const { data, error } = await productQuery;
 
     if (error) return databaseErrorResponse(error);
+    if (Object.keys(updatePayload).length > 0) {
+      const activityError = await recordAdminActivity(supabase, identity, {
+        action: "product.updated",
+        entity_type: "product",
+        entity_id: String(data.id),
+        entity_label: data.name,
+        details: { changes: updatePayload, changedFields: Object.keys(updatePayload) },
+      });
+      if (activityError) return activityLogFailureResponse("product update");
+    }
     return NextResponse.json({ product: data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";

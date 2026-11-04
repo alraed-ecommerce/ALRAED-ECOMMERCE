@@ -6,15 +6,12 @@
 .summary { align-items: flex-end; display: grid; flex: none; gap: 3px; justify-items: end; }
 .summary strong { color: var(--ink); font-size: 23px; }
 .summary > span:not(.newCount) { color: var(--muted); font-size: 9px; }
-.soundToggle { align-items: center; background: var(--theme-card); border: 1px solid var(--theme-border); border-radius: 7px; color: var(--muted); cursor: pointer; display: inline-flex; font-size: 8px; gap: 5px; margin-top: 5px; padding: 6px 8px; white-space: nowrap; }
-.soundToggle:hover { border-color: var(--blue); color: var(--ink); }
 .newCount { background: #eaf5ee; border: 1px solid #cce5d4; border-radius: 999px; color: #17613c; font-size: 9px; font-weight: 700; margin-top: 6px; padding: 5px 8px; }
 .workflowNote { align-items: center; background: color-mix(in srgb, var(--blue) 7%, var(--theme-card)); border: 1px solid var(--theme-border); border-radius: 10px; color: var(--muted); display: flex; font-size: 10px; gap: 9px; line-height: 1.5; margin-bottom: 15px; padding: 11px 13px; }
 .workflowNote svg { color: var(--blue); flex: none; }
 .newOrderAlert { align-items: center; background: #eaf5ee; border: 1px solid #cce5d4; border-radius: 10px; color: #17613c; display: flex; flex-wrap: wrap; font-size: 10px; gap: 8px; margin-bottom: 15px; padding: 10px 12px; }
 .newOrderAlert strong { font-size: 10px; }
 .newOrderAlert button { background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 9px; font-weight: 700; margin-left: auto; text-decoration: underline; }
-.soundError { color: #a63b3b; font-size: 9px; margin: -7px 0 12px; }
 .board { align-items: start; display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(230px, 1fr)); overflow-x: auto; padding: 2px 2px 12px; }
 .column { background: var(--theme-card); border: 1px solid var(--theme-border); border-radius: 13px; min-height: 285px; overflow: hidden; }
 .columnHeading { align-items: center; background: color-mix(in srgb, var(--paper) 60%, var(--theme-card)); border-bottom: 1px solid var(--theme-border); display: flex; gap: 9px; min-height: 64px; padding: 10px 11px; }
@@ -71,4 +68,3 @@
 }
 :root[data-theme="dark"] .newCount,
 :root[data-theme="dark"] .newOrderAlert { background: #0e2d20; border-color: #1d593c; color: #a6e5c1; }
-:root[data-theme="dark"] .soundError { color: #f0a2a2; }

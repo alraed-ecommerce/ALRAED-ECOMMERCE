@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import { activityLogFailureResponse, recordAdminActivity } from "@/lib/admin-activity";
 import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
 
 const ensureAdmin = async (request: Request) => {
@@ -159,6 +160,14 @@ export async function PATCH(request: Request) {
         console.error("Unable to record the manually created Zoho invoice.", updateError.message);
         return NextResponse.json({ error: "Unable to record the Zoho invoice. Refresh the orders list and try again." }, { status: 500 });
       }
+      const activityError = await recordAdminActivity(supabase, identity, {
+        action: "order.zoho_invoice_recorded",
+        entity_type: "order",
+        entity_id: body.id,
+        entity_label: `Order ${body.id.slice(-8).toUpperCase()}`,
+        details: { zoho_invoice_recorded_at: updatedOrder.zoho_invoice_recorded_at },
+      });
+      if (activityError) return activityLogFailureResponse("Zoho invoice record update");
       return NextResponse.json({ order: updatedOrder });
     }
 
@@ -166,6 +175,16 @@ export async function PATCH(request: Request) {
     if (body.status && !allowedStatuses.includes(body.status)) {
       return NextResponse.json({ error: "Invalid order status." }, { status: 400 });
     }
+
+    const { data: previousOrder, error: previousOrderError } = await supabase
+      .from("orders")
+      .select("status, customer_name")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (previousOrderError) {
+      return NextResponse.json({ error: "Unable to verify the current order before saving changes." }, { status: 500 });
+    }
+    if (!previousOrder) return NextResponse.json({ error: "Order not found." }, { status: 404 });
 
     if (body.status) {
       const { error: transitionError } = await supabase.rpc("admin_update_order_status", {
@@ -205,6 +224,23 @@ export async function PATCH(request: Request) {
     const { data: order, error } = await orderQuery.single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const changes: Record<string, unknown> = {};
+    if (body.status && previousOrder.status !== body.status) {
+      changes.status = { from: previousOrder.status, to: body.status };
+    }
+    if (typeof body.notes === "string") {
+      changes.notes = "updated";
+    }
+    if (Object.keys(changes).length > 0) {
+      const activityError = await recordAdminActivity(supabase, identity, {
+        action: "status" in changes ? "order.status_changed" : "order.notes_updated",
+        entity_type: "order",
+        entity_id: body.id,
+        entity_label: previousOrder.customer_name?.trim() || `Order ${body.id.slice(-8).toUpperCase()}`,
+        details: { changes },
+      });
+      if (activityError) return activityLogFailureResponse("order update");
+    }
     return NextResponse.json({ order });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unauthorized";

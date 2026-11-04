@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { ArrowRight, Check, Clock3, PackageCheck, Truck, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, Check, Clock3, PackageCheck, Truck } from "lucide-react";
 import styles from "./order-fulfillment-board.module.css";
 
 type FulfillmentStatus = "paid" | "processing" | "shipped" | "delivered";
@@ -54,8 +54,6 @@ export default function OrderFulfillmentBoard({
 }) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [keyboardDragId, setKeyboardDragId] = useState<string | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [soundError, setSoundError] = useState<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => () => {
@@ -63,7 +61,7 @@ export default function OrderFulfillmentBoard({
   }, []);
 
   const playStatusSound = async () => {
-    if (!soundEnabled || typeof window === "undefined" || !window.AudioContext) return;
+    if (typeof window === "undefined" || !window.AudioContext) return;
     try {
       const audio = audioContextRef.current ?? new window.AudioContext();
       audioContextRef.current = audio;
@@ -80,9 +78,8 @@ export default function OrderFulfillmentBoard({
       volume.connect(audio.destination);
       tone.start();
       tone.stop(audio.currentTime + 0.12);
-      setSoundError(null);
-    } catch {
-      setSoundError("The browser could not play the status sound.");
+    } catch (error) {
+      console.error("Could not play the order status sound.", error);
     }
   };
 
@@ -136,10 +133,6 @@ export default function OrderFulfillmentBoard({
         <div className={styles.summary}>
           <strong>{activeOrders.length}</strong><span>Orders in workflow</span>
           {paidOrders > 0 && <span className={styles.newCount}>{paidOrders} to pack</span>}
-          <button type="button" className={styles.soundToggle} onClick={() => setSoundEnabled((enabled) => !enabled)} aria-pressed={soundEnabled}>
-            {soundEnabled ? <Volume2 size={14} aria-hidden="true" /> : <VolumeX size={14} aria-hidden="true" />}
-            Status sound {soundEnabled ? "on" : "off"}
-          </button>
         </div>
       </div>
 
@@ -155,8 +148,6 @@ export default function OrderFulfillmentBoard({
           <button type="button" onClick={onDismissAlert}>Dismiss</button>
         </div>
       )}
-      {soundError && <p className={styles.soundError} role="status">{soundError}</p>}
-
       {activeOrders.length === 0 ? (
         <div className={styles.emptyState}>
           <PackageCheck size={26} aria-hidden="true" />

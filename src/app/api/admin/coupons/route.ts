@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
+import { activityLogFailureResponse, recordAdminActivity } from "@/lib/admin-activity";
 import { validateCouponInput } from "@/lib/coupons";
-import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
+import { createAdminSupabase, getFirebaseIdentity, type FirebaseIdentity } from "@/lib/server-auth";
 
-async function authorize(request: Request) {
+async function authorize(request: Request): Promise<FirebaseIdentity | NextResponse> {
   const identity = await getFirebaseIdentity(request);
   if (!identity) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isAdminEmail(identity.email)) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  return null;
+  return identity;
 }
 
 function databaseError(error: { code?: string; message: string }) {
@@ -19,8 +20,8 @@ function databaseError(error: { code?: string; message: string }) {
 }
 
 export async function GET(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Coupon storage is not configured." }, { status: 503 });
 
@@ -33,8 +34,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Coupon storage is not configured." }, { status: 503 });
 
@@ -53,12 +54,20 @@ export async function POST(request: Request) {
     .select()
     .single();
   if (error) return databaseError(error);
+  const activityError = await recordAdminActivity(supabase, identity, {
+    action: "coupon.created",
+    entity_type: "coupon",
+    entity_id: data.id,
+    entity_label: data.code,
+    details: { changes: validation.coupon },
+  });
+  if (activityError) return activityLogFailureResponse("coupon creation");
   return NextResponse.json({ coupon: data }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Coupon storage is not configured." }, { status: 503 });
 
@@ -82,12 +91,20 @@ export async function PATCH(request: Request) {
     .single();
   if (error?.code === "PGRST116") return NextResponse.json({ error: "Coupon not found." }, { status: 404 });
   if (error) return databaseError(error);
+  const activityError = await recordAdminActivity(supabase, identity, {
+    action: "coupon.updated",
+    entity_type: "coupon",
+    entity_id: data.id,
+    entity_label: data.code,
+    details: { changes: validation.coupon, changedFields: Object.keys(validation.coupon) },
+  });
+  if (activityError) return activityLogFailureResponse("coupon update");
   return NextResponse.json({ coupon: data });
 }
 
 export async function DELETE(request: Request) {
-  const authError = await authorize(request);
-  if (authError) return authError;
+  const identity = await authorize(request);
+  if (identity instanceof NextResponse) return identity;
   const supabase = createAdminSupabase();
   if (!supabase) return NextResponse.json({ error: "Coupon storage is not configured." }, { status: 503 });
 
@@ -103,7 +120,7 @@ export async function DELETE(request: Request) {
 
   const { data: coupon, error: loadError } = await supabase
     .from("checkout_coupons")
-    .select("id, reserved_redemptions")
+    .select("id, code, reserved_redemptions")
     .eq("id", body.id)
     .maybeSingle();
   if (loadError) return databaseError(loadError);
@@ -114,5 +131,13 @@ export async function DELETE(request: Request) {
 
   const { error } = await supabase.from("checkout_coupons").delete().eq("id", body.id);
   if (error) return databaseError(error);
+  const activityError = await recordAdminActivity(supabase, identity, {
+    action: "coupon.deleted",
+    entity_type: "coupon",
+    entity_id: coupon.id,
+    entity_label: coupon.code,
+    details: { summary: "Deleted coupon" },
+  });
+  if (activityError) return activityLogFailureResponse("coupon deletion");
   return NextResponse.json({ success: true });
 }

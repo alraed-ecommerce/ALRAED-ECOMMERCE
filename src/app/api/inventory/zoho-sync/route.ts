@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { activityLogFailureResponse, recordAdminActivity } from "@/lib/admin-activity";
 import { isAdminEmail } from "@/lib/admin";
-import { createAdminSupabase, getFirebaseIdentity } from "@/lib/server-auth";
+import { createAdminSupabase, getFirebaseIdentity, type FirebaseIdentity } from "@/lib/server-auth";
 import { getZohoStockUpdates, normalizeZohoSku, ZohoInventoryError } from "@/lib/zoho-inventory";
 
 export const runtime = "nodejs";
@@ -17,8 +18,10 @@ const isCronAuthorized = (request: Request) => {
 };
 
 const syncInventory = async (request: Request) => {
-  if (!isCronAuthorized(request)) {
-    const identity = await getFirebaseIdentity(request);
+  const cronAuthorized = isCronAuthorized(request);
+  let identity: FirebaseIdentity | null = null;
+  if (!cronAuthorized) {
+    identity = await getFirebaseIdentity(request);
     if (!identity || !isAdminEmail(identity.email)) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
@@ -98,6 +101,27 @@ const syncInventory = async (request: Request) => {
         || (product.sku && matchedSkus.has(normalizeZohoSku(product.sku)))) return [];
       return [product.sku ?? product.zoho_product_id ?? `Product #${product.id}`];
     });
+    if (updates.length > 0) {
+      const activityError = await recordAdminActivity(supabase, identity, {
+        action: "inventory.synced",
+        entity_type: "inventory",
+        entity_id: null,
+        entity_label: "Zoho inventory",
+        details: {
+          updatedProductCount,
+          updatedSizeCount: updates.filter((update) => update.size).length,
+          unmatchedCount: unmatchedMappings.length,
+          source: cronAuthorized ? "scheduled sync" : "manual sync",
+          updates: updates.map(({ product_id, size, sku, stock }) => ({
+            product_id: product_id ?? null,
+            size: size ?? null,
+            sku,
+            stock,
+          })),
+        },
+      });
+      if (activityError) return activityLogFailureResponse("inventory sync");
+    }
     return NextResponse.json({
       success: true,
       updatedProductCount,

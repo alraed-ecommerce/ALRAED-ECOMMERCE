@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, Clock3, FileSpreadsheet, Filter, Footprints, ImagePlus, LogOut, MessageCircle, Package, PackageCheck, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUp, BarChart3, CalendarDays, Check, ChevronDown, ChevronUp, CircleDot, ClipboardList, Clock3, FileSpreadsheet, Filter, Footprints, History, ImagePlus, LogOut, MessageCircle, Package, PackageCheck, PanelsTopLeft, Plus, RefreshCw, Save, Search, ShieldCheck, Tag } from "lucide-react";
 import type { User } from "firebase/auth";
 import { firebaseEnabled, logoutFirebase, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import { ALRAED_WHATSAPP_CONTACT, createWhatsAppOrderConfirmationLink, normalizeWhatsAppPhone } from "@/lib/whatsapp";
@@ -15,8 +15,9 @@ import HomeCampaignManager from "./home-campaign-manager";
 import CouponManager from "./coupon-manager";
 import InsightsDashboard from "./insights-dashboard";
 import OrderFulfillmentBoard from "./order-fulfillment-board";
+import ActivityLog from "./activity-log";
 
-type AdminSection = "insights" | "products" | "orders" | "posters" | "coupons" | "fulfillment";
+type AdminSection = "insights" | "products" | "orders" | "posters" | "coupons" | "fulfillment" | "activity";
 
 const adminSections: Array<{ id: AdminSection; href: string; label: string; description: string; Icon: typeof Package }> = [
   { id: "insights", href: "/admin/insights", label: "Insights", description: "Sales and operations", Icon: BarChart3 },
@@ -25,6 +26,7 @@ const adminSections: Array<{ id: AdminSection; href: string; label: string; desc
   { id: "posters", href: "/admin/posters", label: "Campaigns", description: "Homepage content", Icon: PanelsTopLeft },
   { id: "coupons", href: "/admin/coupons", label: "Coupons", description: "Discount codes", Icon: Tag },
   { id: "fulfillment", href: "/admin/fulfillment", label: "Future Implementation", description: "Order fulfillment tracking", Icon: PackageCheck },
+  { id: "activity", href: "/admin/activity", label: "Activity Log", description: "Admin change history", Icon: History },
 ];
 const sectionIntros: Record<AdminSection, string> = {
   insights: "Track sales performance, customer trends, order operations, and inventory health.",
@@ -33,6 +35,7 @@ const sectionIntros: Record<AdminSection, string> = {
   posters: "Create and organize the campaigns featured on your homepage.",
   coupons: "Create discount codes and track their use.",
   fulfillment: "Track paid orders from packing through courier handoff and delivery.",
+  activity: "Review the history of changes made by authorized administrators.",
 };
 
 type Product = {
@@ -1141,6 +1144,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
         {section === "posters" && user && <HomeCampaignManager user={user} />}
         {section === "coupons" && user && <CouponManager user={user} />}
         {section === "insights" && user && <InsightsDashboard user={user} />}
+        {section === "activity" && user && <ActivityLog user={user} />}
         {section === "fulfillment" && <OrderFulfillmentBoard
           orders={orders}
           busyOrderId={busyOrderId}
