@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin-demo
+Disallow: /account
+Disallow: /checkout
+Disallow: /api
+
+Content-Signal: search=yes, ai-train=no
+Sitemap: https://alraedshop.com/sitemap.xml

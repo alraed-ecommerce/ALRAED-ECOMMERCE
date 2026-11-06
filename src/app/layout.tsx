@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ThemeToggle from "@/components/storefront/ThemeToggle";
 import GoogleAnalytics from "@/components/storefront/GoogleAnalytics";
+import WebMcpTools from "@/components/storefront/WebMcpTools";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,6 +20,9 @@ export const metadata: Metadata = {
   applicationName: "Al Raed Shop",
   title: "Al Raed Shop | Official Al Raed Sports Store in UAE",
   description: "Shop Al Raed Sports online in the UAE. Discover badminton, tennis, squash and court sports equipment, footwear and essentials.",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     siteName: "Al Raed Sports",
@@ -41,6 +45,54 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify([
+              {
+                "@context": "https://schema.org",
+                "@type": ["Organization", "OnlineStore"],
+                "@id": "https://alraedshop.com/#organization",
+                name: "Al Raed Sports",
+                url: "https://alraedshop.com/",
+                logo: "https://alraedshop.com/icon.png",
+                email: "ecommerce.alraed@gmail.com",
+                telephone: "+971504848236",
+                areaServed: {
+                  "@type": "Country",
+                  name: "United Arab Emirates",
+                },
+                sameAs: [
+                  "https://www.facebook.com/alraedsports/",
+                  "https://www.instagram.com/al_raed_sports/?hl=en",
+                ],
+                contactPoint: {
+                  "@type": "ContactPoint",
+                  contactType: "customer support",
+                  email: "ecommerce.alraed@gmail.com",
+                  telephone: "+971504848236",
+                },
+              },
+              {
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                "@id": "https://alraedshop.com/#website",
+                url: "https://alraedshop.com/",
+                name: "Al Raed Shop",
+                publisher: { "@id": "https://alraedshop.com/#organization" },
+                inLanguage: "en-AE",
+                potentialAction: {
+                  "@type": "SearchAction",
+                  target: {
+                    "@type": "EntryPoint",
+                    urlTemplate: "https://alraedshop.com/shop?q={search_term_string}",
+                  },
+                  "query-input": "required name=search_term_string",
+                },
+              },
+            ]).replace(/</g, "\\u003c"),
+          }}
+        />
+        <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("alraed-color-theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark")}catch(e){}})()`,
           }}
@@ -50,6 +102,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <ThemeToggle />
         <GoogleAnalytics />
+        <WebMcpTools />
       </body>
     </html>
   );
