@@ -22,6 +22,7 @@ import {
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
 import { getBrandOptions, getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, normalizeBrand, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
+import { toAnalyticsItem, trackEcommerceEvent } from "@/lib/google-analytics";
 
 const categories = ["All", "Badminton", "Tennis", "Squash", "Pickleball", "Accessories"];
 const cartKey = "alraed-storefront-cart";
@@ -139,6 +140,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
   const [maximumPrice, setMaximumPrice] = useState("");
   const [sort, setSort] = useState("featured");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -236,22 +238,23 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     const filtered = products.filter((product) => {
       const matchesCategory = category === "All" || product.category === category;
       const matchesSearch = !normalizedQuery || `${product.name} ${product.brand} ${product.category} ${getProductType(product)}`.toLowerCase().includes(normalizedQuery);
+      const matchesWishlist = !showWishlistOnly || wishlist.includes(product.id);
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(getProductType(product));
       const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(normalizeBrand(product.brand || "AL RAED SPORTS"));
       const matchesStock = showOutOfStock || product.stock > 0;
-      return matchesCategory && matchesSearch && matchesType && matchesBrand && matchesStock && product.price >= minimum && product.price <= maximum;
+      return matchesCategory && matchesSearch && matchesWishlist && matchesType && matchesBrand && matchesStock && product.price >= minimum && product.price <= maximum;
     });
     if (sort === "price-low") return filtered.sort((a, b) => a.price - b.price);
     if (sort === "price-high") return filtered.sort((a, b) => b.price - a.price);
     if (sort === "name") return filtered.sort((a, b) => a.name.localeCompare(b.name));
     if (sort === "stock") return filtered.sort((a, b) => b.stock - a.stock);
     return filtered;
-  }, [products, category, query, selectedTypes, selectedBrands, showOutOfStock, minimumPrice, maximumPrice, sort]);
+  }, [products, category, query, showWishlistOnly, wishlist, selectedTypes, selectedBrands, showOutOfStock, minimumPrice, maximumPrice, sort]);
 
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
-  const categoryLabel = category === "All" ? "Shop all gear" : `${category} equipment`;
-  const activeFilterCount = selectedTypes.length + selectedBrands.length + (showOutOfStock ? 1 : 0) + (minimumPrice !== "" || maximumPrice !== "" ? 1 : 0);
+  const categoryLabel = showWishlistOnly ? "Your wishlist" : category === "All" ? "Shop all gear" : `${category} equipment`;
+  const activeFilterCount = selectedTypes.length + selectedBrands.length + (showWishlistOnly ? 1 : 0) + (showOutOfStock ? 1 : 0) + (minimumPrice !== "" || maximumPrice !== "" ? 1 : 0);
 
   const persistCart = useCallback((nextCart: CartLine[]) => {
     try {
@@ -290,7 +293,15 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
         ? { ...line, product, quantity: Math.min(line.quantity + quantity, availableForVariant) }
         : line)
       : [...currentCart, { ...newLine, quantity: Math.min(quantity, availableForVariant) }];
+    const addedQuantity = Math.max(0, Math.min((existing?.quantity ?? 0) + quantity, availableForVariant) - (existing?.quantity ?? 0));
     if (!persistCart(nextCart)) return false;
+    if (addedQuantity > 0) {
+      trackEcommerceEvent("add_to_cart", {
+        currency: "AED",
+        value: product.price * addedQuantity,
+        items: [toAnalyticsItem(product, addedQuantity, options.size ?? options.color)],
+      });
+    }
     setAddedIds((current) => [...current.filter((id) => id !== product.id), product.id]);
     setNotice(`${product.name.replace(/^\[TEST\]\s*/, "")} added to your bag`);
     window.setTimeout(() => {
@@ -315,6 +326,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
   };
 
   const clearFilters = () => {
+    setShowWishlistOnly(false);
     setSelectedTypes([]);
     setSelectedBrands([]);
     setShowOutOfStock(false);
@@ -368,6 +380,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
         </div>
         <div className="ar-shop-category-tabs" aria-label="Filter by sport">
           {categories.map((item) => <button type="button" className={category === item ? "is-active" : ""} aria-pressed={category === item} onClick={() => updateCategory(item)} key={item}>{item === "All" ? "ALL GEAR" : item}</button>)}
+          <button type="button" className={`ar-shop-wishlist-tab ${showWishlistOnly ? "is-active" : ""}`} aria-pressed={showWishlistOnly} onClick={() => setShowWishlistOnly((current) => !current)}><Heart size={14} fill={showWishlistOnly ? "currentColor" : "none"} /> WISHLIST <span>({wishlist.length})</span></button>
         </div>
       </div>
 
@@ -375,7 +388,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
         <div className={`ar-shop-mobile-filter-backdrop ${filtersOpen ? "is-open" : ""}`} onClick={() => setFiltersOpen(false)} />
         <aside className={`ar-shop-sidebar ${filtersOpen ? "is-open" : ""}`} aria-label="Product filters">
           <div className="ar-shop-sidebar-heading"><div><SlidersHorizontal size={15} /><strong>FILTER & REFINE</strong></div><button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)}><X size={18} /></button></div>
-          {(selectedTypes.length > 0 || selectedBrands.length > 0 || showOutOfStock || minimumPrice || maximumPrice) && <button className="ar-shop-clear" type="button" onClick={clearFilters}>CLEAR ALL FILTERS <X size={12} /></button>}
+          {(showWishlistOnly || selectedTypes.length > 0 || selectedBrands.length > 0 || showOutOfStock || minimumPrice || maximumPrice) && <button className="ar-shop-clear" type="button" onClick={clearFilters}>CLEAR ALL FILTERS <X size={12} /></button>}
           <details className="ar-shop-filter-group" open>
             <summary>Product type <ChevronDown size={14} /></summary>
             <div className="ar-shop-filter-options">{typeOptions.map(([type, count]) => (
@@ -416,7 +429,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
 
           {catalogState === "loading" ? <div className="ar-shop-state"><span className="ar-loader" /><p>Finding your next favourite…</p></div>
             : catalogState === "error" ? <div className="ar-shop-state ar-shop-error" role="alert"><strong>We couldn&apos;t reach the shop right now.</strong><p>{catalogError}</p><button type="button" onClick={() => window.location.reload()}>TRY AGAIN <ArrowRight size={14} /></button></div>
-              : filteredProducts.length === 0 ? <div className="ar-shop-empty"><span>✳</span><h2>No gear found.</h2><p>Try adjusting the filters or searching for a different court essential.</p><button className="ar-button ar-button-outline" type="button" onClick={clearFilters}>CLEAR FILTERS <X size={14} /></button></div>
+              : filteredProducts.length === 0 ? <div className="ar-shop-empty"><span>✳</span><h2>{showWishlistOnly && wishlist.length === 0 ? "Your wishlist is empty." : "No gear found."}</h2><p>{showWishlistOnly && wishlist.length === 0 ? "Tap the heart on any product to save it here for later." : "Try adjusting the filters or searching for a different court essential."}</p><button className="ar-button ar-button-outline" type="button" onClick={clearFilters}>{showWishlistOnly && wishlist.length === 0 ? "BROWSE ALL GEAR" : "CLEAR FILTERS"} <X size={14} /></button></div>
                 : <div className="ar-shop-grid">{filteredProducts.map((product) => <ShopProductCard key={product.id} product={product} onView={setSelectedProduct} onAdd={(item) => hasProductOptions(item) ? setSelectedProduct(item) : addToCart(item)} added={addedIds.includes(product.id)} liked={wishlist.includes(product.id)} onLike={(id) => {
                   const next = wishlist.includes(id) ? wishlist.filter((item) => item !== id) : [...wishlist, id];
                   setWishlist(next);

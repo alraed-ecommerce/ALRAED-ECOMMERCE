@@ -8,6 +8,7 @@ import AthleteShowcase from "./AthleteShowcase";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
 import { getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
+import { toAnalyticsItem, trackEcommerceEvent } from "@/lib/google-analytics";
 import type { HomeCampaign } from "@/lib/home-campaigns";
 import {
   ArrowDown,
@@ -618,6 +619,8 @@ export default function Home() {
     ), 0);
     const availableForVariant = Math.min(Math.max(0, product.stock - otherVariantQuantity), 50);
     if (availableForVariant < 1) return false;
+    const addedQuantity = Math.min(requestedQuantity, availableForVariant - (existingLine?.quantity ?? 0));
+    if (addedQuantity < 1) return false;
     setCart((items) => {
       const existing = items.find((line) => getCartLineKey(line) === newLineKey);
       if (existing) {
@@ -629,7 +632,11 @@ export default function Home() {
       }
       return [...items, { ...newLine, quantity: Math.min(requestedQuantity, availableForVariant) }];
     });
-    if (existingLine && existingLine.quantity >= availableForVariant) return false;
+    trackEcommerceEvent("add_to_cart", {
+      currency: "AED",
+      value: product.price * addedQuantity,
+      items: [toAnalyticsItem(product, addedQuantity, options.size ?? options.color)],
+    });
     setJustAdded((items) => [...items.filter((id) => id !== product.id), product.id]);
     window.setTimeout(() => setJustAdded((items) => items.filter((id) => id !== product.id)), 1500);
     return true;

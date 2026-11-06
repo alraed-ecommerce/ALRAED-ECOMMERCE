@@ -948,6 +948,8 @@ body { background: #090b0f; color: #f5f7fa; }
 .ar-shop-category-tabs::-webkit-scrollbar { display: none; }
 .ar-shop-category-tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; color: #8390a0; cursor: pointer; flex: 0 0 auto; font-size: 12px; font-weight: 700; letter-spacing: .12em; padding: 13px 0 14px; transition: color .2s, border .2s; }
 .ar-shop-category-tabs button:hover, .ar-shop-category-tabs button.is-active { border-color: var(--ar-blue); color: #f4f7fb; }
+.ar-shop-category-tabs .ar-shop-wishlist-tab { align-items: center; display: inline-flex; gap: 7px; }
+.ar-shop-wishlist-tab > span { font-size: 10px; letter-spacing: 0; }
 .ar-shop-layout { align-items: start; display: grid; gap: clamp(23px, 3.5vw, 52px); grid-template-columns: 215px minmax(0,1fr); padding: 25px clamp(24px, 7vw, 108px) 80px; }
 .ar-shop-sidebar { min-width: 0; }
 .ar-shop-sidebar-heading { align-items: center; border-bottom: 1px solid #2c3541; display: flex; justify-content: space-between; padding: 3px 0 14px; }
@@ -1607,7 +1609,7 @@ textarea { transition-duration: .2s; }
 .ar-cart-bottom > small { color: var(--muted); }
 .ar-cart-heading > button,
 .ar-cart-line button { color: var(--ink); }
-.ar-cart-image { background: var(--paper); }
+.ar-cart-image { background: #fff; }
 .ar-drawer-backdrop { background: rgba(23,23,23,.4); }
 .ar-floating-button { background: #fff; border-color: var(--theme-border); box-shadow: 0 8px 22px rgba(23,23,23,.1); color: var(--ink); }
 .ar-floating-button:hover { background: var(--paper); border-color: #d7cebf; color: var(--ink); }

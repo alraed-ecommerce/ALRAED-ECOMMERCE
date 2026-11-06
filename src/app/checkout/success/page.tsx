@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Clock3, PackageCheck } from "lucide-react";
 import type { User } from "firebase/auth";
 import { subscribeToAuth } from "@/lib/firebase";
+import { trackEcommerceEvent } from "@/lib/google-analytics";
 
 type ConfirmedOrder = {
   id: string;
@@ -24,6 +25,7 @@ export default function CheckoutSuccessPage() {
   const [order, setOrder] = useState<ConfirmedOrder | null>(null);
   const [state, setState] = useState<"loading" | "confirmed" | "waiting" | "error">("loading");
   const [error, setError] = useState("");
+  const purchaseTrackedOrderIds = useRef(new Set<string>());
 
   useEffect(() => subscribeToAuth((currentUser) => {
     setUser(currentUser);
@@ -54,6 +56,29 @@ export default function CheckoutSuccessPage() {
 
         setOrder(result.order ?? null);
         if (result.order?.status === "paid" || result.order?.stripe_payment_intent_id || result.order?.stripe_paid_at) {
+          if (result.order && !purchaseTrackedOrderIds.current.has(result.order.id)) {
+            purchaseTrackedOrderIds.current.add(result.order.id);
+            const purchaseKey = `alraed-ga-purchase-${result.order.id}`;
+            let alreadyTracked = false;
+            try {
+              alreadyTracked = window.localStorage.getItem(purchaseKey) === "sent";
+              if (!alreadyTracked) window.localStorage.setItem(purchaseKey, "sent");
+            } catch (storageError) {
+              console.error("Unable to persist the analytics purchase deduplication key.", storageError);
+            }
+            if (!alreadyTracked) {
+              trackEcommerceEvent("purchase", {
+                transaction_id: result.order.id,
+                currency: "AED",
+                value: Number(result.order.total),
+                items: result.order.order_items.map((item) => ({
+                  item_name: item.product_name,
+                  price: Number(item.unit_price),
+                  quantity: item.quantity,
+                })),
+              });
+            }
+          }
           try {
             window.localStorage.removeItem("alraed-storefront-cart");
             window.dispatchEvent(new Event("alraed-cart-update"));

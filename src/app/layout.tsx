@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ThemeToggle from "@/components/storefront/ThemeToggle";
+import GoogleAnalytics from "@/components/storefront/GoogleAnalytics";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +15,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Al Raed Sports Commerce | Premium sports equipment in the UAE",
-  description: "Premium sports equipment and essentials for players across the UAE.",
+  metadataBase: new URL(process.env.SEO_SITE_URL ?? "https://alraedshop.com"),
+  title: "Al Raed Sports | Badminton, Tennis & Court Gear in the UAE",
+  description: "Shop badminton, tennis, squash and court sports gear in the UAE. Explore Al Raed Sports equipment, footwear and essentials.",
+  openGraph: {
+    type: "website",
+    siteName: "Al Raed Sports",
+    locale: "en_AE",
+    title: "Al Raed Sports | Badminton, Tennis & Court Gear in the UAE",
+    description: "Shop badminton, tennis, squash and court sports gear in the UAE.",
+  },
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -36,6 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         {children}
         <ThemeToggle />
+        <GoogleAnalytics />
       </body>
     </html>
   );

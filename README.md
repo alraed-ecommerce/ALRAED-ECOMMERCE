@@ -75,6 +75,12 @@ After staging passes, attach the production domain to the Hostinger Web App, ena
 
 The admin dashboard displays the confirmed payment method, paid time, and Stripe PaymentIntent reference. The application does not store card numbers or CVCs.
 
+### Google Search Console and Analytics
+
+The public sitemap is available at `https://alraedshop.com/sitemap.xml`, and `https://alraedshop.com/robots.txt` points crawlers to it while disallowing admin, account, checkout, and API routes. Set `SEO_SITE_URL` to the canonical production origin on the hosting provider. If Google Search Console provides an HTML-tag verification token, set it as `GOOGLE_SITE_VERIFICATION`; Domain property verification by DNS TXT is also supported and does not require this variable.
+
+To enable Google Analytics 4, create a GA4 web data stream and set its `G-...` Measurement ID as `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` in the hosting provider's environment settings, then rebuild and redeploy. Tracking is disabled unless this valid ID is configured. The site sends page views, product views, add-to-cart events, and deduplicated purchase events after the paid order is verified on the checkout return page. Add consent controls appropriate to the site's privacy obligations before enabling analytics where required.
+
 ### Order confirmation notifications
 
 Customer notifications run only from the signed Stripe webhook after the order has been marked `paid` by `mark_stripe_order_paid`. Per-channel notification state is stored on the order and claimed atomically, so a repeated webhook does not resend completed notifications. Failed deliveries are recorded and retried on a later webhook; abandoned `sending` claims can be retried after 15 minutes. If a provider is not configured, its channel stays pending so a Stripe webhook can be resent after configuration. Orders with no customer email are recorded as skipped without affecting the paid order.

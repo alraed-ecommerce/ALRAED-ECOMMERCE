@@ -4,6 +4,9 @@ import ShopClient from "./shop-client";
 export const metadata: Metadata = {
   title: "Shop All Gear | Al Raed Sports",
   description: "Explore badminton, tennis, squash and court-side essentials at Al Raed Sports.",
+  alternates: {
+    canonical: "/shop",
+  },
 };
 
 export default async function ShopPage({ searchParams }: PageProps<"/shop">) {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { ArrowLeft, ArrowRight, ArrowUpRight, MessageCircle, Minus, Plus, ShoppingBag, X } from "lucide-react";
 import testProductDetails from "@/lib/test-product-details.json";
+import { toAnalyticsItem, trackEcommerceEvent } from "@/lib/google-analytics";
 import { isFootwearProduct, type StoreProduct } from "@/lib/store-products";
 
 type ProductDetails = { description: string; specifications: Record<string, string> };
@@ -60,6 +61,7 @@ export default function ProductDetailDialog({
   onAdd: (product: StoreProduct, quantity: number, options: { color?: string; size?: string }) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const trackedViewProductId = useRef<number | null>(null);
   const [selection, setSelection] = useState({ productId: 0, quantity: 1, color: "", size: "" });
   const [imageSelection, setImageSelection] = useState({ productId: 0, index: 0 });
   const [magnifier, setMagnifier] = useState<ProductImageMagnifier | null>(null);
@@ -149,6 +151,16 @@ export default function ProductDetailDialog({
     if (!dialog) return;
     if (product) {
       if (!dialog.open) dialog.showModal();
+      if (trackedViewProductId.current !== product.id) {
+        trackedViewProductId.current = product.id;
+        trackEcommerceEvent("view_item", {
+          currency: "AED",
+          value: product.price,
+          items: [toAnalyticsItem(product)],
+        });
+      }
+    } else {
+      trackedViewProductId.current = null;
     }
     if (!product && dialog.open) dialog.close();
   }, [product]);
