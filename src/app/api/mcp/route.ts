@@ -118,6 +118,22 @@ export async function POST(request: Request) {
       serverInfo: { name: "com.alraedshop/storefront", version: "1.0.0" },
     });
   }
+  if (body.method === "server/discover") {
+    return rpcResponse(id, {
+      resultType: "complete",
+      supportedVersions: [protocolVersion],
+      capabilities: { tools: {} },
+      _meta: {
+        "io.modelcontextprotocol/serverInfo": {
+          name: "com.alraedshop/storefront",
+          version: "1.0.0",
+        },
+      },
+      instructions: "Use tools/list to inspect search_products. It searches public products and prices only; it cannot change carts or place orders.",
+      ttlMs: 3600000,
+      cacheScope: "public",
+    });
+  }
   if (body.method === "ping") {
     return rpcResponse(id, {});
   }

@@ -57,6 +57,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 logo: "https://alraedshop.com/icon.png",
                 email: "ecommerce.alraed@gmail.com",
                 telephone: "+971504848236",
+                address: {
+                  "@type": "PostalAddress",
+                  streetAddress: "Madinat Zayed Shopping Centre, 2nd Floor",
+                  addressLocality: "Al Danah",
+                  addressRegion: "Abu Dhabi",
+                  addressCountry: "AE",
+                },
                 areaServed: {
                   "@type": "Country",
                   name: "United Arab Emirates",

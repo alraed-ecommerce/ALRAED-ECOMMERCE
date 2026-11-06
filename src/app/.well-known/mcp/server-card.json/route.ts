@@ -6,7 +6,7 @@ export function GET() {
     name: "com.alraedshop/storefront",
     title: "Al Raed Shop",
     version: "1.0.0",
-    description: "Read-only product search for the Al Raed Sports UAE online shop.",
+    description: "Read-only product search by name or category. No cart or checkout actions.",
     websiteUrl: siteUrl,
     icons: [{ src: `${siteUrl}/icon.png`, mimeType: "image/png" }],
     remotes: [{

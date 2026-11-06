@@ -21,6 +21,7 @@ export default function ContactPage() {
         </p>
         <address className="mt-8 not-italic">
           <ul className="space-y-4">
+            <li><span className="mr-2 font-medium">Store:</span>Madinat Zayed Shopping Centre, 2nd Floor, Al Danah, Abu Dhabi, UAE</li>
             <li><span className="mr-2 font-medium">Email:</span><a className="underline underline-offset-4" href="mailto:ecommerce.alraed@gmail.com">ecommerce.alraed@gmail.com</a></li>
             <li><span className="mr-2 font-medium">Phone:</span><a className="underline underline-offset-4" href="tel:+971504848236">+971 50 484 8236</a></li>
             <li><span className="mr-2 font-medium">WhatsApp:</span><a className="underline underline-offset-4" href="https://wa.me/971504848236" target="_blank" rel="noreferrer">Message Al Raed Sports</a></li>
