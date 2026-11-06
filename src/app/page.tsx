@@ -788,7 +788,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="ar-subnav" aria-label="Shop links"><span>THE UAE&apos;S HOME FOR RACQUET SPORTS</span><a href="#service">SHOP WITH CONFIDENCE <ArrowUpRight size={12} /></a></div>
+      <div className="ar-subnav" aria-label="Shop links"><span>OFFICIAL AL RAED SPORTS ONLINE STORE · UAE</span><a href="#service">SHOP WITH CONFIDENCE <ArrowUpRight size={12} /></a></div>
 
       {campaign && <section className="ar-hero" data-campaign-layout={campaign.layout ?? "standard"} aria-label="Featured campaign">
         <img key={campaign.image} className={`ar-hero-image${campaign.layout ? ` ar-hero-image-${campaign.layout}` : ""}`} src={campaign.image} alt="" />

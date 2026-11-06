@@ -16,14 +16,15 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SEO_SITE_URL ?? "https://alraedshop.com"),
-  title: "Al Raed Sports | Badminton, Tennis & Court Gear in the UAE",
-  description: "Shop badminton, tennis, squash and court sports gear in the UAE. Explore Al Raed Sports equipment, footwear and essentials.",
+  applicationName: "Al Raed Shop",
+  title: "Al Raed Shop | Official Al Raed Sports Store in UAE",
+  description: "Shop Al Raed Sports online in the UAE. Discover badminton, tennis, squash and court sports equipment, footwear and essentials.",
   openGraph: {
     type: "website",
     siteName: "Al Raed Sports",
     locale: "en_AE",
-    title: "Al Raed Sports | Badminton, Tennis & Court Gear in the UAE",
-    description: "Shop badminton, tennis, squash and court sports gear in the UAE.",
+    title: "Al Raed Shop | Official Al Raed Sports Store in UAE",
+    description: "Shop Al Raed Sports online in the UAE. Discover badminton, tennis, squash and court sports gear.",
   },
   ...(process.env.GOOGLE_SITE_VERIFICATION
     ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }

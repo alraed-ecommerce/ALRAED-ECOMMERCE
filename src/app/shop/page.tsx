@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import ShopClient from "./shop-client";
 
 export const metadata: Metadata = {
-  title: "Shop All Gear | Al Raed Sports",
-  description: "Explore badminton, tennis, squash and court-side essentials at Al Raed Sports.",
+  title: "Shop Al Raed Sports | Official UAE Sports Store",
+  description: "Shop Al Raed Sports online. Browse badminton, tennis, squash and court-side sports gear in the UAE.",
   alternates: {
     canonical: "/shop",
   },
