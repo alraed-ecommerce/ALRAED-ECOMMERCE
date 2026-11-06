@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const siteUrl = process.env.SEO_SITE_URL ?? "https://alraedshop.com";
+
 function acceptsMarkdown(acceptHeader: string) {
   return acceptHeader.split(",").some((mediaRange) => {
     const [mediaType, ...parameters] = mediaRange.trim().toLowerCase().split(";");
@@ -27,11 +29,11 @@ export function proxy(request: NextRequest) {
 
   response.headers.append(
     "Link",
-    `<${new URL("/llms.txt", request.url).toString()}>; rel="describedby"; type="text/plain"`,
+    `<${new URL("/llms.txt", siteUrl).toString()}>; rel="describedby"; type="text/plain"`,
   );
   response.headers.append(
     "Link",
-    `<${new URL("/index.md", request.url).toString()}>; rel="alternate"; type="text/markdown"`,
+    `<${new URL("/index.md", siteUrl).toString()}>; rel="alternate"; type="text/markdown"`,
   );
   addVaryAccept(response.headers);
   return response;
