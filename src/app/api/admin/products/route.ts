@@ -532,7 +532,12 @@ export async function PUT(request: Request) {
       if (!body.name.trim()) return NextResponse.json({ error: "Product name cannot be empty." }, { status: 400 });
       updatePayload.name = body.name.trim();
     }
-    if (body.brand) updatePayload.brand = body.brand.trim();
+    if (body.brand !== undefined) {
+      if (typeof body.brand !== "string" || !body.brand.trim()) {
+        return NextResponse.json({ error: "Product brand cannot be empty." }, { status: 400 });
+      }
+      updatePayload.brand = body.brand.trim();
+    }
     if (body.category !== undefined) {
       if (!allowedCategories.includes(body.category)) return NextResponse.json({ error: "Invalid product category." }, { status: 400 });
       updatePayload.category = body.category;

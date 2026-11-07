@@ -388,6 +388,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [now, setNow] = useState(0);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
+  const [editingProductBrand, setEditingProductBrand] = useState("");
   const [editingProductPrice, setEditingProductPrice] = useState("");
   const [editingProductCategory, setEditingProductCategory] = useState("Badminton");
   const [editingProductType, setEditingProductType] = useState<ProductType>("other");
@@ -969,6 +970,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       },
     } : {});
     setEditingProductName(product.name);
+    setEditingProductBrand(product.brand);
     setEditingProductPrice(String(product.price));
     setEditingProductCategory(productCategories.includes(product.category) ? product.category : "Accessories");
     setEditingProductSku(product.sku ?? "");
@@ -982,9 +984,10 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const saveProductEditor = async (product: Product, isActive = Boolean(product.is_active)) => {
     if (!user) return;
     const name = editingProductName.trim();
+    const brand = editingProductBrand.trim();
     const price = Number(editingProductPrice);
-    if (!name || !productCategories.includes(editingProductCategory)) {
-      setAuthError("Enter a product name and valid category.");
+    if (!name || !brand || !productCategories.includes(editingProductCategory)) {
+      setAuthError("Enter a product name, brand, and valid category.");
       return;
     }
     if (!Number.isFinite(price) || price <= 0) {
@@ -1020,6 +1023,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           product_type: editingProductType,
           size_category: isZohoSizeProduct(editingProductType, editingSizeCategory) ? editingSizeCategory : null,
           name,
+          brand,
           price,
           category: editingProductCategory,
           sku: editingProductSku,
@@ -1692,6 +1696,10 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       <label className="grid gap-2 text-xs font-semibold text-slate-400">
                         Product name
                         <input value={editingProductName} onChange={(event) => setEditingProductName(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" />
+                      </label>
+                      <label className="grid gap-2 text-xs font-semibold text-slate-400">
+                        Brand
+                        <input value={editingProductBrand} onChange={(event) => setEditingProductBrand(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" placeholder="e.g. Yonex or Victor" />
                       </label>
                       <label className="grid gap-2 text-xs font-semibold text-slate-400">
                         Price (AED)
