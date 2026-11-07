@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -143,7 +143,6 @@ function ShopProductCard({
 
 export default function ShopClient({ initialCategory, initialQuery }: { initialCategory: string; initialQuery: string }) {
   const router = useRouter();
-  const resultsRef = useRef<HTMLElement>(null);
   const isMobileShop = useSyncExternalStore(subscribeToMobileShop, getIsMobileShop, getServerIsMobileShop);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
@@ -283,7 +282,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     const nextPage = Math.max(1, Math.min(page, pageCount));
     if (nextPage === currentPage) return;
     setPagination({ resultsKey, page: nextPage });
-    resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
@@ -451,7 +450,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
           <div className="ar-shop-sidebar-note"><span>✳</span><p>Chosen for the court.<br />Ready for your next game.</p></div>
         </aside>
 
-        <section ref={resultsRef} className="ar-shop-results" aria-label="Shop products">
+        <section className="ar-shop-results" aria-label="Shop products">
           <div className="ar-shop-toolbar">
             <button className="ar-shop-filter-trigger" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
               <Filter size={15} /> FILTER {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
