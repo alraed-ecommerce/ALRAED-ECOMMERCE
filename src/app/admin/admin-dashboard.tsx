@@ -388,6 +388,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [now, setNow] = useState(0);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
+  const [editingProductPrice, setEditingProductPrice] = useState("");
   const [editingProductCategory, setEditingProductCategory] = useState("Badminton");
   const [editingProductType, setEditingProductType] = useState<ProductType>("other");
   const [editingSizeCategory, setEditingSizeCategory] = useState<SizeCategory | null>("mens");
@@ -409,7 +410,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const [orderDateFilter, setOrderDateFilter] = useState("");
   const [orderQueueFilter, setOrderQueueFilter] = useState<"all" | "awaiting_payment" | "paid" | "shipped">("all");
   const [productSearch, setProductSearch] = useState("");
-  const [productListView, setProductListView] = useState<"recent" | "all">("recent");
+  const [productListView, setProductListView] = useState<"recent" | "all">("all");
   const [productVisibility, setProductVisibility] = useState<"all" | "live" | "hidden">("all");
   const [productForm, setProductForm] = useState({
     product_type: "" as ProductType | "",
@@ -968,6 +969,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       },
     } : {});
     setEditingProductName(product.name);
+    setEditingProductPrice(String(product.price));
     setEditingProductCategory(productCategories.includes(product.category) ? product.category : "Accessories");
     setEditingProductSku(product.sku ?? "");
     setEditingZohoProductId(product.zoho_product_id ?? "");
@@ -980,8 +982,13 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
   const saveProductEditor = async (product: Product, isActive = Boolean(product.is_active)) => {
     if (!user) return;
     const name = editingProductName.trim();
+    const price = Number(editingProductPrice);
     if (!name || !productCategories.includes(editingProductCategory)) {
       setAuthError("Enter a product name and valid category.");
+      return;
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      setAuthError("Enter a valid product price.");
       return;
     }
     if (isZohoSizeProduct(editingProductType, editingSizeCategory) && !Object.values(editingSizeValues.skus).some((sku) => sku.trim())) {
@@ -1013,6 +1020,7 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
           product_type: editingProductType,
           size_category: isZohoSizeProduct(editingProductType, editingSizeCategory) ? editingSizeCategory : null,
           name,
+          price,
           category: editingProductCategory,
           sku: editingProductSku,
           zoho_product_id: editingZohoProductId,
@@ -1030,7 +1038,9 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save product changes.");
       setProducts((current) => current.map((item) => item.id === product.id ? result.product : item));
-      setProductNotice(`${name} ${isActive ? "is now published" : "has been hidden"}.`);
+      setProductNotice(isActive === Boolean(product.is_active)
+        ? `${name} changes saved.`
+        : `${name} ${isActive ? "is now published" : "has been hidden"}.`);
       setEditingProductId(null);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to save product changes.");
@@ -1682,6 +1692,10 @@ export default function AdminDashboard({ section }: { section: AdminSection }) {
                       <label className="grid gap-2 text-xs font-semibold text-slate-400">
                         Product name
                         <input value={editingProductName} onChange={(event) => setEditingProductName(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" />
+                      </label>
+                      <label className="grid gap-2 text-xs font-semibold text-slate-400">
+                        Price (AED)
+                        <input value={editingProductPrice} onChange={(event) => setEditingProductPrice(event.target.value)} type="number" min="0.01" step="0.01" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-400" />
                       </label>
                       <label className="grid gap-2 text-xs font-semibold text-slate-400">
                         Category
