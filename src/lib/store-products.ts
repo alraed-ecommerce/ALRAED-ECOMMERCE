@@ -29,10 +29,14 @@ export function normalizeBrand(brand: string) {
   return (brand.trim() || "AL RAED SPORTS").toLocaleLowerCase();
 }
 
+export function hasAvailableStock(product: Pick<StoreProduct, "stock" | "stockStatus">) {
+  return product.stock > 0 && product.stockStatus !== "unavailable";
+}
+
 export function getBrandOptions(products: StoreProduct[], category: string) {
   const brands = new Map<string, { label: string; count: number }>();
   for (const product of products) {
-    if (category !== "All" && product.category !== category) continue;
+    if (!hasAvailableStock(product) || (category !== "All" && product.category !== category)) continue;
 
     const rawBrand = product.brand.trim() || "AL RAED SPORTS";
     const key = normalizeBrand(rawBrand);

@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import ProductDetailDialog from "@/components/storefront/ProductDetailDialog";
-import { getBrandOptions, getCartLineKey, hasProductOptions, isFootwearProduct, mapStoreProduct, normalizeBrand, type CartLine, type StoreProduct } from "@/lib/store-products";
+import { getBrandOptions, getCartLineKey, hasAvailableStock, hasProductOptions, isFootwearProduct, mapStoreProduct, normalizeBrand, type CartLine, type StoreProduct } from "@/lib/store-products";
 import { startStripeCheckout } from "@/lib/start-checkout";
 import { toAnalyticsItem, trackEcommerceEvent } from "@/lib/google-analytics";
 
@@ -239,6 +239,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     const categoryProducts = products.filter((product) => category === "All" || product.category === category);
     const counts = new Map<string, number>();
     categoryProducts.forEach((product) => {
+      if (!hasAvailableStock(product)) return;
       const type = getProductType(product);
       counts.set(type, (counts.get(type) ?? 0) + 1);
     });

@@ -4,11 +4,13 @@ import test from "node:test";
 const { getBrandOptions, mapStoreProduct, normalizeBrand } = await import("../src/lib/store-products.ts");
 
 const products = [
-  { brand: "YONEX", category: "Badminton" },
-  { brand: "Yonex", category: "Tennis" },
-  { brand: " yonex ", category: "Tennis" },
-  { brand: "WILSON", category: "Tennis" },
-  { brand: "", category: "Accessories" },
+  { brand: "YONEX", category: "Badminton", stock: 5, stockStatus: "manual" },
+  { brand: "Yonex", category: "Tennis", stock: 3, stockStatus: "manual" },
+  { brand: " yonex ", category: "Tennis", stock: 2, stockStatus: "manual" },
+  { brand: "WILSON", category: "Tennis", stock: 1, stockStatus: "manual" },
+  { brand: "", category: "Accessories", stock: 4, stockStatus: "manual" },
+  { brand: "Yonex", category: "Tennis", stock: 0, stockStatus: "manual" },
+  { brand: "Wilson", category: "Tennis", stock: 8, stockStatus: "unavailable" },
 ];
 
 test("brand normalization merges casing and surrounding whitespace", () => {
@@ -24,6 +26,13 @@ test("brand options combine duplicate casing and count products in the selected 
     ["wilson", "WILSON", 1],
     ["yonex", "Yonex", 3],
   ]);
+  assert.deepEqual(getBrandOptions(products, "Tennis"), [
+    ["wilson", "WILSON", 1],
+    ["yonex", "Yonex", 2],
+  ]);
+});
+
+test("brand option counts exclude out-of-stock and unavailable products", () => {
   assert.deepEqual(getBrandOptions(products, "Tennis"), [
     ["wilson", "WILSON", 1],
     ["yonex", "Yonex", 2],
