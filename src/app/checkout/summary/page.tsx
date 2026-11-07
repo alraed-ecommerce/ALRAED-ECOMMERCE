@@ -3,10 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, LockKeyhole, MapPin, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LoaderCircle, LockKeyhole, MapPin, Plus, Tag, Trash2, UserRound } from "lucide-react";
 import type { User } from "firebase/auth";
-import { subscribeToAuth } from "@/lib/firebase";
+import { firebaseEnabled, signInWithGoogle, subscribeToAuth } from "@/lib/firebase";
 import type { CartLine } from "@/lib/store-products";
 
 type QuoteItem = {
@@ -34,6 +33,7 @@ type SavedAddress = { id: string; label: string; city: string; address: string; 
 type SavedProfile = {
   phone: string | null;
   addresses: SavedAddress[] | null;
+  whatsapp_order_updates_opt_in?: boolean;
 };
 
 const cartKey = "alraed-storefront-cart";
@@ -66,19 +66,23 @@ function readCart() {
 }
 
 export default function OrderSummaryPage() {
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [profile, setProfile] = useState<SavedProfile | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [phone, setPhone] = useState("");
+  const [addressLabel, setAddressLabel] = useState("Home");
+  const [city, setCity] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
   const [couponInput, setCouponInput] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [couponLoading, setCouponLoading] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState("");
   const [couponMessage, setCouponMessage] = useState("");
   const [couponError, setCouponError] = useState("");
@@ -127,9 +131,11 @@ export default function OrderSummaryPage() {
   useEffect(() => subscribeToAuth((currentUser) => {
     setUser(currentUser);
     if (!currentUser) {
-      router.replace("/account");
+      setLoading(false);
       return;
     }
+    setLoading(true);
+    setError("");
     void (async () => {
       try {
         const token = await currentUser.getIdToken();
@@ -138,23 +144,22 @@ export default function OrderSummaryPage() {
           cache: "no-store",
         });
         const result = await response.json() as { profile?: SavedProfile; error?: string };
-        const validAddresses = result.profile?.addresses?.filter(isCompleteSavedAddress) ?? [];
-        if (!response.ok || !result.profile?.phone?.trim() || validAddresses.length === 0) {
-          router.replace("/account?checkout=details");
-          return;
-        }
+        if (!response.ok || !result.profile) throw new Error(result.error || "Unable to load your delivery details.");
+        const validAddresses = result.profile.addresses?.filter(isCompleteSavedAddress) ?? [];
+        const selectedAddress = validAddresses.find((address) => address.is_default) ?? validAddresses[0];
         setProfile(result.profile);
-        setSelectedAddressId(
-          validAddresses.find((address) => address.is_default)?.id
-          ?? validAddresses[0].id,
-        );
+        setPhone(result.profile.phone ?? "");
+        setSelectedAddressId(selectedAddress?.id ?? crypto.randomUUID());
+        setAddressLabel(selectedAddress?.label || "Home");
+        setCity(selectedAddress?.city ?? "");
+        setStreetAddress(selectedAddress?.address ?? "");
       } catch (profileError) {
         setError(profileError instanceof Error ? profileError.message : "Unable to verify your delivery details.");
       } finally {
         setLoading(false);
       }
     })();
-  }), [router]);
+  }), []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -226,20 +231,74 @@ export default function OrderSummaryPage() {
     window.sessionStorage.removeItem(couponKey);
   };
 
+  const continueWithGoogle = async () => {
+    setSigningIn(true);
+    setError("");
+    try {
+      await signInWithGoogle();
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : "Unable to sign in with Google.");
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const addDeliveryAddress = () => {
+    setSelectedAddressId(crypto.randomUUID());
+    setAddressLabel("Home");
+    setCity("");
+    setStreetAddress("");
+  };
+
   const proceedToPayment = async () => {
     if (!user || !quote || paymentLoading) return;
-    if (!profile?.addresses?.some((address) => address.id === selectedAddressId)) {
-      setError("Choose a saved delivery address before continuing to payment.");
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length < 9 || phoneDigits.length > 15) {
+      setError("Enter a valid phone number before continuing.");
+      return;
+    }
+    if (!addressLabel.trim() || !city.trim() || !streetAddress.trim()) {
+      setError("Complete the address label, city, and street address before continuing.");
       return;
     }
     setPaymentLoading(true);
     setError("");
     try {
       const token = await user.getIdToken();
+      const addressId = selectedAddressId || crypto.randomUUID();
+      const addresses = (profile?.addresses ?? []).filter(isCompleteSavedAddress)
+        .map((address) => ({ ...address, is_default: address.id === addressId }));
+      const currentAddressIndex = addresses.findIndex((address) => address.id === addressId);
+      const deliveryAddress: SavedAddress = {
+        id: addressId,
+        label: addressLabel.trim(),
+        city: city.trim(),
+        address: streetAddress.trim(),
+        is_default: true,
+      };
+      if (currentAddressIndex >= 0) addresses[currentAddressIndex] = deliveryAddress;
+      else addresses.push(deliveryAddress);
+
+      const profileResponse = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phone.trim(),
+          addresses,
+          whatsappOrderUpdatesOptIn: profile?.whatsapp_order_updates_opt_in === true,
+        }),
+      });
+      const profileResult = await profileResponse.json() as { profile?: SavedProfile; error?: string };
+      if (!profileResponse.ok || !profileResult.profile) {
+        throw new Error(profileResult.error || "Unable to save your delivery details.");
+      }
+      setProfile(profileResult.profile);
+      setSelectedAddressId(addressId);
+
       const checkoutFingerprint = JSON.stringify({
         products: cart.map(({ product, quantity, color, size }) => [product.id, quantity, color ?? null, size ?? null]),
         coupon: appliedCouponCode,
-        address: selectedAddressId,
+        address: addressId,
       });
       let savedAttempt: { fingerprint: string; id: string } | null = null;
       try {
@@ -264,7 +323,7 @@ export default function OrderSummaryPage() {
             ...(size ? { size } : {}),
           })),
           couponCode: appliedCouponCode,
-          addressId: selectedAddressId,
+          addressId,
           checkoutAttemptId,
         }),
       });
@@ -284,7 +343,7 @@ export default function OrderSummaryPage() {
     }
   };
 
-  const selectedAddress = profile?.addresses?.find((address) => address.id === selectedAddressId);
+  const savedAddresses = profile?.addresses?.filter(isCompleteSavedAddress) ?? [];
   const busy = loading || !cartLoaded || quoteLoading;
 
   return (
@@ -323,29 +382,66 @@ export default function OrderSummaryPage() {
                     <strong className="checkout-summary-line-total">{money(item.lineTotal)}</strong>
                   </article>
                 ))}
+                {!user && cart.map((line, index) => (
+                  <article className="checkout-summary-item" key={`${line.product.id}-${index}`}>
+                    <div className="checkout-summary-image">
+                      {line.product.image ? <Image src={line.product.image} alt="" width={100} height={100} unoptimized /> : <Tag size={20} />}
+                    </div>
+                    <div className="checkout-summary-item-copy">
+                      <strong>{line.product.name}</strong>
+                      {(line.color || line.size) && <span>{[line.color && `Color: ${line.color}`, line.size && `Size: ${line.size}`].filter(Boolean).join(" · ")}</span>}
+                      <span>Qty {line.quantity} · {money(line.product.price)} each</span>
+                    </div>
+                    <strong className="checkout-summary-line-total">{money(line.product.price * line.quantity)}</strong>
+                  </article>
+                ))}
               </div>
               <div className="checkout-summary-address">
                 <div className="checkout-summary-address-heading">
-                  <div><strong>Delivery location</strong><span>Choose where this order should arrive.</span></div>
-                  <Link href="/account?checkout=details">Edit addresses</Link>
+                  <div><strong>Delivery details</strong><span>Add your phone number and the address for this order.</span></div>
+                  {user && <button className="checkout-add-address" type="button" onClick={addDeliveryAddress} disabled={paymentLoading}><Plus size={13} /> ADD ADDRESS</button>}
                 </div>
-                <div className="checkout-address-options" role="group" aria-label="Choose a delivery address">
-                  {profile?.addresses?.filter(isCompleteSavedAddress).map((address) => (
-                    <button
-                      type="button"
-                      key={address.id}
-                      className={`checkout-address-option${selectedAddressId === address.id ? " is-selected" : ""}`}
-                      onClick={() => setSelectedAddressId(address.id)}
-                      aria-pressed={selectedAddressId === address.id}
-                      disabled={paymentLoading}
-                    >
-                      <MapPin size={16} aria-hidden="true" />
-                      <span><strong>{address.label || "Delivery address"}{address.is_default ? " · Default" : ""}</strong><small>{address.city} · {address.address}</small></span>
-                      <span className="checkout-address-check" aria-hidden="true">{selectedAddressId === address.id ? <Check size={14} /> : null}</span>
+                {!user ? (
+                  <div className="checkout-inline-signin">
+                    <UserRound size={20} />
+                    <div><strong>Sign in to continue your order</strong><p>Your order and delivery details will be saved to your account.</p></div>
+                    <button className="account-primary-button" type="button" onClick={() => void continueWithGoogle()} disabled={!firebaseEnabled || signingIn}>
+                      {signingIn ? <><LoaderCircle size={15} className="checkout-spinning" /> CONNECTING…</> : <><span className="google-mark">G</span> CONTINUE WITH GOOGLE</>}
                     </button>
-                  ))}
-                </div>
-                {!selectedAddress && <p className="checkout-address-error" role="alert">Choose a delivery address to continue.</p>}
+                  </div>
+                ) : (
+                  <>
+                    {savedAddresses.length > 0 ? (
+                      <div className="checkout-address-options" role="group" aria-label="Choose a saved delivery address">
+                        {savedAddresses.map((address) => (
+                          <button
+                            type="button"
+                            key={address.id}
+                            className={`checkout-address-option${selectedAddressId === address.id ? " is-selected" : ""}`}
+                            onClick={() => {
+                              setSelectedAddressId(address.id);
+                              setAddressLabel(address.label || "Home");
+                              setCity(address.city);
+                              setStreetAddress(address.address);
+                            }}
+                            aria-pressed={selectedAddressId === address.id}
+                            disabled={paymentLoading}
+                          >
+                            <MapPin size={16} aria-hidden="true" />
+                            <span><strong>{address.label || "Delivery address"}{address.is_default ? " · Default" : ""}</strong><small>{address.city} · {address.address}</small></span>
+                            <span className="checkout-address-check" aria-hidden="true">{selectedAddressId === address.id ? <Check size={14} /> : null}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="checkout-delivery-fields">
+                      <label className="account-field"><span>Phone number</span><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="05xxxxxxxx or +9715xxxxxxxx" autoComplete="tel" inputMode="tel" disabled={paymentLoading} /></label>
+                      <label className="account-field"><span>Address label</span><input value={addressLabel} onChange={(event) => setAddressLabel(event.target.value)} placeholder="Home, work..." autoComplete="address-line1" disabled={paymentLoading} /></label>
+                      <label className="account-field"><span>City / Emirate</span><input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Abu Dhabi" autoComplete="address-level1" disabled={paymentLoading} /></label>
+                      <label className="account-field"><span>Street address</span><textarea value={streetAddress} onChange={(event) => setStreetAddress(event.target.value)} placeholder="Area, street, building, apartment" rows={3} autoComplete="street-address" disabled={paymentLoading} /></label>
+                    </div>
+                  </>
+                )}
               </div>
             </section>
 
@@ -354,11 +450,11 @@ export default function OrderSummaryPage() {
               <form className="checkout-coupon-form" onSubmit={(event) => { event.preventDefault(); void applyCoupon(); }}>
                 <label htmlFor="checkout-coupon">Coupon code</label>
                 <div className="checkout-coupon-input">
-                  <input id="checkout-coupon" value={couponInput} onChange={(event) => setCouponInput(event.target.value)} placeholder="Enter code" autoComplete="off" disabled={couponLoading || paymentLoading || Boolean(quote?.coupon)} />
+                  <input id="checkout-coupon" value={couponInput} onChange={(event) => setCouponInput(event.target.value)} placeholder="Enter code" autoComplete="off" disabled={!user || couponLoading || paymentLoading || Boolean(quote?.coupon)} />
                   {quote?.coupon ? (
                     <button type="button" onClick={removeCoupon} disabled={couponLoading || paymentLoading} aria-label="Remove coupon"><Trash2 size={16} /></button>
                   ) : (
-                    <button type="submit" disabled={couponLoading || paymentLoading || !couponInput.trim()}>{couponLoading ? <LoaderCircle size={16} className="checkout-spinning" /> : "Apply"}</button>
+                    <button type="submit" disabled={!user || couponLoading || paymentLoading || !couponInput.trim()}>{couponLoading ? <LoaderCircle size={16} className="checkout-spinning" /> : "Apply"}</button>
                   )}
                 </div>
               </form>
@@ -374,10 +470,11 @@ export default function OrderSummaryPage() {
                 <div className="checkout-final-total"><span>Total payable</span><strong>{quote ? money(quote.total) : "—"}</strong></div>
               </div>
               <p className="checkout-summary-delivery-note">Delivery fees and handling are included in the total above. You can confirm your address before paying.</p>
+              {!user && <p className="checkout-summary-delivery-note">Sign in to verify current prices and apply offers.</p>}
 
               {error && <p className="checkout-summary-error" role="alert">{error}</p>}
-              <button className="account-primary-button checkout-pay-button" type="button" onClick={() => void proceedToPayment()} disabled={!quote || paymentLoading || quoteLoading}>
-                {paymentLoading ? <><LoaderCircle size={16} className="checkout-spinning" /> PREPARING PAYMENT…</> : <>PROCEED TO PAYMENT <ArrowRight size={16} /></>}
+              <button className="account-primary-button checkout-pay-button" type="button" onClick={() => void proceedToPayment()} disabled={!user || !quote || paymentLoading || quoteLoading}>
+                {paymentLoading ? <><LoaderCircle size={16} className="checkout-spinning" /> SAVING DETAILS…</> : <>SAVE DETAILS &amp; PROCEED TO PAYMENT <ArrowRight size={16} /></>}
               </button>
               <p className="checkout-summary-payment-note"><LockKeyhole size={13} /> Final prices and coupon eligibility are verified securely before payment.</p>
               <Link className="checkout-summary-back-link" href="/shop"><ArrowLeft size={14} /> Change items in your bag</Link>
