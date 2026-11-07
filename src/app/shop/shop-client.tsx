@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -143,6 +143,7 @@ function ShopProductCard({
 
 export default function ShopClient({ initialCategory, initialQuery }: { initialCategory: string; initialQuery: string }) {
   const router = useRouter();
+  const shouldScrollToTop = useRef(false);
   const isMobileShop = useSyncExternalStore(subscribeToMobileShop, getIsMobileShop, getServerIsMobileShop);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
@@ -278,11 +279,21 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     ? Math.min(pagination.page, Math.max(pageCount, 1))
     : 1;
   const visibleProducts = filteredProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
+
+  useEffect(() => {
+    if (!shouldScrollToTop.current) return;
+    shouldScrollToTop.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentPage]);
+
   const changePage = (page: number) => {
     const nextPage = Math.max(1, Math.min(page, pageCount));
     if (nextPage === currentPage) return;
+    shouldScrollToTop.current = true;
     setPagination({ resultsKey, page: nextPage });
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
