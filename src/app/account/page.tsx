@@ -64,6 +64,7 @@ export default function AccountPage() {
   const [addressDraft, setAddressDraft] = useState(emptyAddress());
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [addressFormOpen, setAddressFormOpen] = useState(false);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
@@ -121,9 +122,12 @@ export default function AccountPage() {
           const hasDeliveryAddress = loadedProfile.addresses?.some((address) => (
             address.is_default && address.city.trim() && address.address.trim()
           ));
-          if (!loadedProfile.addresses?.length || (
-            new URLSearchParams(window.location.search).get("checkout") === "details" && !hasDeliveryAddress
-          )) setAddressFormOpen(true);
+          const checkoutDetailsFlow = new URLSearchParams(window.location.search).get("checkout") === "details";
+          const needsDeliveryAddress = !loadedProfile.addresses?.length || (
+            checkoutDetailsFlow && !hasDeliveryAddress
+          );
+          if (needsDeliveryAddress) setAddressFormOpen(true);
+          if (checkoutDetailsFlow || needsDeliveryAddress) setIsEditingDetails(true);
         } catch (loadError) {
           setError(loadError instanceof Error ? loadError.message : "Unable to load your account.");
         } finally {
@@ -176,6 +180,7 @@ export default function AccountPage() {
       setWhatsappOrderUpdatesOptIn(result.profile.whatsapp_order_updates_opt_in === true);
       setAddressFormOpen(false);
       setEditingAddressId(null);
+      setIsEditingDetails(false);
       setCheckoutDetailsRequired(false);
       if (new URLSearchParams(window.location.search).has("checkout")) router.replace("/account");
       setNotice("Your account details are saved.");
@@ -188,6 +193,15 @@ export default function AccountPage() {
 
   const setDefaultAddress = async (addressId: string) => {
     if (!profile || !user) return;
+    if (isEditingDetails) {
+      const address = profile.addresses?.find((item) => item.id === addressId);
+      if (!address) return;
+      setEditingAddressId(address.id);
+      setAddressDraft({ label: address.label, city: address.city, address: address.address, is_default: true });
+      setAddressFormOpen(true);
+      setNotice(null);
+      return;
+    }
     const nextAddresses = profile.addresses?.map((address) => ({ ...address, is_default: address.id === addressId })) ?? [];
     setSaving(true);
     setError(null);
@@ -218,6 +232,7 @@ export default function AccountPage() {
     setEditingAddressId(address.id);
     setAddressDraft({ label: address.label, city: address.city, address: address.address, is_default: address.is_default });
     setAddressFormOpen(true);
+    setIsEditingDetails(true);
     setNotice(null);
   };
 
@@ -225,7 +240,17 @@ export default function AccountPage() {
     setEditingAddressId(null);
     setAddressDraft({ ...emptyAddress(), is_default: !profile?.addresses?.length });
     setAddressFormOpen(true);
+    setIsEditingDetails(true);
     setNotice(null);
+  };
+
+  const cancelEditingDetails = () => {
+    setPhone(profile?.phone ?? "");
+    setWhatsappOrderUpdatesOptIn(profile?.whatsapp_order_updates_opt_in === true);
+    setAddressFormOpen(false);
+    setEditingAddressId(null);
+    setIsEditingDetails(false);
+    setError(null);
   };
 
   const handleSignIn = async () => {
@@ -249,6 +274,21 @@ export default function AccountPage() {
     address.is_default && address.city.trim() && address.address.trim()
   )));
   const profileComplete = Boolean(profile?.phone?.trim() && hasDeliveryAddress);
+  const originalEditingAddress = profile?.addresses?.find((address) => address.id === editingAddressId);
+  const addressDraftChanged = addressFormOpen && (
+    editingAddressId
+      ? !originalEditingAddress
+        || addressDraft.label !== originalEditingAddress.label
+        || addressDraft.city !== originalEditingAddress.city
+        || addressDraft.address !== originalEditingAddress.address
+        || addressDraft.is_default !== originalEditingAddress.is_default
+      : Boolean(addressDraft.label.trim() || addressDraft.city.trim() || addressDraft.address.trim())
+  );
+  const hasUnsavedProfileChanges = Boolean(profile && (
+    phone !== (profile.phone ?? "")
+    || whatsappOrderUpdatesOptIn !== profile.whatsapp_order_updates_opt_in
+    || addressDraftChanged
+  ));
 
   useEffect(() => {
     if (!checkoutDetailsRequired || loading) return;
@@ -286,6 +326,9 @@ export default function AccountPage() {
               {isAdmin && (
                 <Link href="/admin" className="account-logout" style={{ display: "inline-flex" }}><ShieldCheck size={16} /> Admin</Link>
               )}
+              {isEditingDetails
+                ? <button className="account-logout" onClick={cancelEditingDetails} disabled={saving}>Cancel editing</button>
+                : <button className="account-logout" onClick={() => setIsEditingDetails(true)}>Edit details</button>}
               <button className="account-logout" onClick={handleLogout}><LogOut size={16} /> Sign out</button>
             </div>
           </div>
@@ -301,18 +344,18 @@ export default function AccountPage() {
               <div className="account-panel-heading"><div><p className="account-kicker">01 / CUSTOMER</p><h2>Personal details</h2></div><UserRound size={18} /></div>
               <label className="account-field"><span>Full name</span><input value={profile?.full_name ?? user?.displayName ?? ""} readOnly /><small>Your name comes from Google and cannot be changed here.</small></label>
               <label className="account-field"><span>Email address</span><input value={profile?.email ?? user?.email ?? ""} readOnly /></label>
-              <label className={`account-field${checkoutDetailsRequired && !phone.trim() ? " is-required" : ""}`}><span>Phone number</span><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="05xxxxxxxx or +9715xxxxxxxx" autoComplete="tel" inputMode="tel" /></label>
-              <label className="account-checkbox"><input type="checkbox" checked={whatsappOrderUpdatesOptIn} onChange={(event) => setWhatsappOrderUpdatesOptIn(event.target.checked)} /><span>Send order confirmations to me on WhatsApp (optional)</span></label>
+              <label className={`account-field${checkoutDetailsRequired && !phone.trim() ? " is-required" : ""}`}><span>Phone number</span><input value={phone} onChange={(event) => setPhone(event.target.value)} readOnly={!isEditingDetails} placeholder="05xxxxxxxx or +9715xxxxxxxx" autoComplete="tel" inputMode="tel" /></label>
+              <label className="account-checkbox"><input type="checkbox" checked={whatsappOrderUpdatesOptIn} onChange={(event) => setWhatsappOrderUpdatesOptIn(event.target.checked)} disabled={!isEditingDetails} /><span>Send order confirmations to me on WhatsApp (optional)</span></label>
             </section>
 
             <section className="account-panel addresses-panel">
-              <div className="account-panel-heading"><div><p className="account-kicker">02 / DELIVERY</p><h2>Saved addresses</h2></div><button className="account-icon-action" onClick={addAddress} aria-label="Add a delivery address"><Plus size={18} /></button></div>
+              <div className="account-panel-heading"><div><p className="account-kicker">02 / DELIVERY</p><h2>Saved addresses</h2></div>{isEditingDetails && <button className="account-icon-action" onClick={addAddress} aria-label="Add a delivery address"><Plus size={18} /></button>}</div>
               <div className="address-list">
                 {profile?.addresses?.map((address) => (
                   <article className={`address-card${address.is_default ? " is-default" : ""}`} key={address.id}>
                     <div className="address-card-top"><span className="address-label"><MapPin size={14} />{address.label}</span>{address.is_default && <span className="default-tag">DEFAULT</span>}</div>
                     <strong>{address.city}</strong><p>{address.address}</p>
-                    <div className="address-actions"><button onClick={() => editAddress(address)}>Edit address</button>{!address.is_default && <button onClick={() => void setDefaultAddress(address.id)} disabled={saving}>Make default</button>}</div>
+                    {isEditingDetails && <div className="address-actions"><button onClick={() => editAddress(address)}>Edit address</button>{!address.is_default && <button onClick={() => void setDefaultAddress(address.id)} disabled={saving}>Make default</button>}</div>}
                   </article>
                 ))}
                 {!profile?.addresses?.length && <p className="account-empty-inline">Add a delivery address to make checkout quicker.</p>}
@@ -326,9 +369,9 @@ export default function AccountPage() {
                   <label className="account-checkbox"><input type="checkbox" checked={addressDraft.is_default} onChange={(event) => setAddressDraft((current) => ({ ...current, is_default: event.target.checked }))} /><span>Set as default delivery address</span></label>
                 </div>
               )}
-              <button className="account-primary-button account-save-button" onClick={() => void saveProfile()} disabled={saving || (!addressFormOpen && !profile?.addresses?.length)}>
-                <Save size={15} /> {saving ? "Saving..." : addressFormOpen ? "Save account and address" : "Save phone number"}
-              </button>
+              {isEditingDetails && hasUnsavedProfileChanges && <button className="account-primary-button account-save-button" onClick={() => void saveProfile()} disabled={saving}>
+                <Save size={15} /> {saving ? "Saving..." : "Save changes"}
+              </button>}
             </section>
 
             <section className="account-panel orders-panel">
