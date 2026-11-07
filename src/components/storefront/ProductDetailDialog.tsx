@@ -63,6 +63,7 @@ export default function ProductDetailDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const trackedViewProductId = useRef<number | null>(null);
   const [selection, setSelection] = useState({ productId: 0, quantity: 1, color: "", size: "" });
+  const [selectionMessage, setSelectionMessage] = useState<{ productId: number; message: string } | null>(null);
   const [imageSelection, setImageSelection] = useState({ productId: 0, index: 0 });
   const [magnifier, setMagnifier] = useState<ProductImageMagnifier | null>(null);
   const images = product
@@ -111,6 +112,7 @@ export default function ProductDetailDialog({
   };
   const changeColor = (color: string) => {
     if (!product) return;
+    setSelectionMessage(null);
     setSelection((current) => ({
       productId: product.id,
       quantity: current.productId === product.id ? current.quantity : 1,
@@ -120,6 +122,7 @@ export default function ProductDetailDialog({
   };
   const changeSize = (size: string) => {
     if (!product) return;
+    setSelectionMessage(null);
     setSelection((current) => ({
       productId: product.id,
       quantity: 1,
@@ -128,6 +131,9 @@ export default function ProductDetailDialog({
     }));
   };
   const details = product ? getProductDetails(product) : null;
+  const visibleSelectionMessage = product && selectionMessage?.productId === product.id
+    ? selectionMessage.message
+    : "";
   const productHelpHref = product
     ? `https://wa.me/971504848236?text=${encodeURIComponent(`Hello Al Raed Sports, I have a question about ${product.name}, delivery, or returns.`)}`
     : null;
@@ -144,6 +150,29 @@ export default function ProductDetailDialog({
     || (product.sizes.length > 0 && !selectedSize)
     || (product.unavailableSizes.includes(selectedSize))
     || (hasSizeStock && selectedStock < 1)
+  ));
+  const needsOptionSelection = Boolean(product && (
+    (product.colors.length > 0 && !needsSize && !selectedColor)
+    || (needsSize && (!product.sizes.length || !selectedSize))
+    || (product.sizes.length > 0 && !selectedSize)
+  ));
+  const hasAvailableOptionStock = Boolean(product && (
+    hasSizeStock
+      ? product.sizes.some((size) => !product.unavailableSizes.includes(size) && (product.sizeStock[size] ?? 0) > 0)
+      : product.sizes.length > 0
+        ? product.stock > 0 && product.sizes.some((size) => !product.unavailableSizes.includes(size))
+        : product.stock > 0
+  ));
+  const canPromptForOption = Boolean(
+    product
+    && needsOptionSelection
+    && hasAvailableOptionStock
+    && product.stockStatus !== "unavailable",
+  );
+  const addButtonDisabled = Boolean(product && (
+    (!canPromptForOption && (selectedStock < 1 || hasMissingOptions))
+    || quantity > selectedStock && !canPromptForOption
+    || product.stockStatus === "unavailable"
   ));
 
   useEffect(() => {
@@ -251,10 +280,31 @@ export default function ProductDetailDialog({
                 <span aria-live="polite">{quantity}</span>
                 <button type="button" aria-label="Increase quantity" onClick={() => changeQuantity((value) => Math.min(Math.min(selectedStock, 50), value + 1))} disabled={quantity >= Math.min(selectedStock, 50)}><Plus size={15} /></button>
               </div>
-              <button className="ar-button ar-button-light ar-product-detail-add" type="button" onClick={() => onAdd(product, quantity, { color: needsSize ? undefined : selectedColor || undefined, size: selectedSize || undefined })} disabled={selectedStock < 1 || quantity > selectedStock || hasMissingOptions || product.stockStatus === "unavailable"}>
-                {product.stockStatus === "unavailable" ? "UNAVAILABLE" : selectedStock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
+              <button
+                className={`ar-button ar-button-light ar-product-detail-add${canPromptForOption ? " is-selection-required" : ""}`}
+                type="button"
+                aria-disabled={addButtonDisabled && !canPromptForOption}
+                aria-describedby={visibleSelectionMessage ? "ar-product-selection-message" : undefined}
+                onClick={() => {
+                  if (needsOptionSelection) {
+                    setSelectionMessage({
+                      productId: product.id,
+                      message: needsSize
+                        ? "Please select a size before adding this item to your bag."
+                        : "Please choose your options before adding this item to your bag.",
+                    });
+                    return;
+                  }
+                  if (addButtonDisabled) return;
+                  setSelectionMessage(null);
+                  onAdd(product, quantity, { color: needsSize ? undefined : selectedColor || undefined, size: selectedSize || undefined });
+                }}
+                disabled={addButtonDisabled && !canPromptForOption}
+              >
+                {product.stockStatus === "unavailable" ? "UNAVAILABLE" : canPromptForOption ? <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></> : selectedStock < 1 ? "SOLD OUT" : <>ADD TO BAG · {money(product.price * quantity)} <ShoppingBag size={16} /></>}
               </button>
             </div>
+            {visibleSelectionMessage && <p className="ar-product-selection-message" id="ar-product-selection-message" role="status">{visibleSelectionMessage}</p>}
             <div className="ar-product-detail-assurance">
               <p>UAE-wide delivery · Delivery fees shown at checkout</p>
               <a href={productHelpHref ?? undefined} target="_blank" rel="noreferrer">

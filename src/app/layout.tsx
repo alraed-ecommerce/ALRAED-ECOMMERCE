@@ -47,56 +47,57 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify([
-              {
-                "@context": "https://schema.org",
-                "@type": ["Organization", "OnlineStore"],
-                "@id": "https://alraedshop.com/#organization",
-                name: "Al Raed Sports",
-                url: "https://alraedshop.com/",
-                logo: "https://alraedshop.com/icon.png",
-                email: "ecommerce.alraed@gmail.com",
-                telephone: "+971504848236",
-                address: {
-                  "@type": "PostalAddress",
-                  streetAddress: "Madinat Zayed Shopping Centre, 2nd Floor",
-                  addressLocality: "Al Danah",
-                  addressRegion: "Abu Dhabi",
-                  addressCountry: "AE",
-                },
-                areaServed: {
-                  "@type": "Country",
-                  name: "United Arab Emirates",
-                },
-                sameAs: [
-                  "https://www.facebook.com/alraedsports/",
-                  "https://www.instagram.com/al_raed_sports/?hl=en",
-                ],
-                contactPoint: {
-                  "@type": "ContactPoint",
-                  contactType: "customer support",
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@graph": [
+                {
+                  "@type": ["Organization", "OnlineStore"],
+                  "@id": "https://alraedshop.com/#organization",
+                  name: "Al Raed Sports",
+                  url: "https://alraedshop.com/",
+                  logo: "https://alraedshop.com/icon.png",
                   email: "ecommerce.alraed@gmail.com",
                   telephone: "+971504848236",
-                },
-              },
-              {
-                "@context": "https://schema.org",
-                "@type": "WebSite",
-                "@id": "https://alraedshop.com/#website",
-                url: "https://alraedshop.com/",
-                name: "Al Raed Shop",
-                publisher: { "@id": "https://alraedshop.com/#organization" },
-                inLanguage: "en-AE",
-                potentialAction: {
-                  "@type": "SearchAction",
-                  target: {
-                    "@type": "EntryPoint",
-                    urlTemplate: "https://alraedshop.com/shop?q={search_term_string}",
+                  address: {
+                    "@type": "PostalAddress",
+                    streetAddress: "Madinat Zayed Shopping Centre, 2nd Floor",
+                    addressLocality: "Al Danah",
+                    addressRegion: "Abu Dhabi",
+                    addressCountry: "AE",
                   },
-                  "query-input": "required name=search_term_string",
+                  areaServed: {
+                    "@type": "Country",
+                    name: "United Arab Emirates",
+                  },
+                  sameAs: [
+                    "https://www.facebook.com/alraedsports/",
+                    "https://www.instagram.com/al_raed_sports/?hl=en",
+                  ],
+                  contactPoint: {
+                    "@type": "ContactPoint",
+                    contactType: "customer support",
+                    email: "ecommerce.alraed@gmail.com",
+                    telephone: "+971504848236",
+                  },
                 },
-              },
-            ]).replace(/</g, "\\u003c"),
+                {
+                  "@type": "WebSite",
+                  "@id": "https://alraedshop.com/#website",
+                  url: "https://alraedshop.com/",
+                  name: "Al Raed Shop",
+                  publisher: { "@id": "https://alraedshop.com/#organization" },
+                  inLanguage: "en-AE",
+                  potentialAction: {
+                    "@type": "SearchAction",
+                    target: {
+                      "@type": "EntryPoint",
+                      urlTemplate: "https://alraedshop.com/shop?q={search_term_string}",
+                    },
+                    "query-input": "required name=search_term_string",
+                  },
+                },
+              ],
+            }).replace(/</g, "\\u003c"),
           }}
         />
         <script

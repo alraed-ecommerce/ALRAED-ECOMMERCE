@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -26,6 +26,21 @@ import { toAnalyticsItem, trackEcommerceEvent } from "@/lib/google-analytics";
 
 const categories = ["All", "Badminton", "Tennis", "Squash", "Pickleball", "Accessories"];
 const cartKey = "alraed-storefront-cart";
+const mobileShopQuery = "(max-width: 700px)";
+
+function subscribeToMobileShop(callback: () => void) {
+  const mediaQuery = window.matchMedia(mobileShopQuery);
+  mediaQuery.addEventListener("change", callback);
+  return () => mediaQuery.removeEventListener("change", callback);
+}
+
+function getIsMobileShop() {
+  return window.matchMedia(mobileShopQuery).matches;
+}
+
+function getServerIsMobileShop() {
+  return false;
+}
 
 const money = (amount: number) =>
   new Intl.NumberFormat("en-AE", { style: "currency", currency: "AED", maximumFractionDigits: 2 }).format(amount);
@@ -128,6 +143,8 @@ function ShopProductCard({
 
 export default function ShopClient({ initialCategory, initialQuery }: { initialCategory: string; initialQuery: string }) {
   const router = useRouter();
+  const resultsRef = useRef<HTMLElement>(null);
+  const isMobileShop = useSyncExternalStore(subscribeToMobileShop, getIsMobileShop, getServerIsMobileShop);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [catalogError, setCatalogError] = useState("");
@@ -139,6 +156,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
   const [minimumPrice, setMinimumPrice] = useState("");
   const [maximumPrice, setMaximumPrice] = useState("");
   const [sort, setSort] = useState("featured");
+  const [pagination, setPagination] = useState({ resultsKey: "", page: 1 });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
@@ -250,6 +268,23 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
     if (sort === "stock") return filtered.sort((a, b) => b.stock - a.stock);
     return filtered;
   }, [products, category, query, showWishlistOnly, wishlist, selectedTypes, selectedBrands, showOutOfStock, minimumPrice, maximumPrice, sort]);
+
+  const productsPerPage = isMobileShop ? 20 : 52;
+  const resultsKey = `${productsPerPage}:${filteredProducts.map((product) => product.id).join(",")}`;
+  const pageCount = Math.ceil(filteredProducts.length / productsPerPage);
+  if (pagination.resultsKey !== resultsKey) {
+    setPagination({ resultsKey, page: 1 });
+  }
+  const currentPage = pagination.resultsKey === resultsKey
+    ? Math.min(pagination.page, Math.max(pageCount, 1))
+    : 1;
+  const visibleProducts = filteredProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
+  const changePage = (page: number) => {
+    const nextPage = Math.max(1, Math.min(page, pageCount));
+    if (nextPage === currentPage) return;
+    setPagination({ resultsKey, page: nextPage });
+    resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
@@ -416,7 +451,7 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
           <div className="ar-shop-sidebar-note"><span>✳</span><p>Chosen for the court.<br />Ready for your next game.</p></div>
         </aside>
 
-        <section className="ar-shop-results" aria-label="Shop products">
+        <section ref={resultsRef} className="ar-shop-results" aria-label="Shop products">
           <div className="ar-shop-toolbar">
             <button className="ar-shop-filter-trigger" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
               <Filter size={15} /> FILTER {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
@@ -430,12 +465,22 @@ export default function ShopClient({ initialCategory, initialQuery }: { initialC
           {catalogState === "loading" ? <div className="ar-shop-state"><span className="ar-loader" /><p>Finding your next favourite…</p></div>
             : catalogState === "error" ? <div className="ar-shop-state ar-shop-error" role="alert"><strong>We couldn&apos;t reach the shop right now.</strong><p>{catalogError}</p><button type="button" onClick={() => window.location.reload()}>TRY AGAIN <ArrowRight size={14} /></button></div>
               : filteredProducts.length === 0 ? <div className="ar-shop-empty"><span>✳</span><h2>{showWishlistOnly && wishlist.length === 0 ? "Your wishlist is empty." : "No gear found."}</h2><p>{showWishlistOnly && wishlist.length === 0 ? "Tap the heart on any product to save it here for later." : "Try adjusting the filters or searching for a different court essential."}</p><button className="ar-button ar-button-outline" type="button" onClick={clearFilters}>{showWishlistOnly && wishlist.length === 0 ? "BROWSE ALL GEAR" : "CLEAR FILTERS"} <X size={14} /></button></div>
-                : <div className="ar-shop-grid">{filteredProducts.map((product) => <ShopProductCard key={product.id} product={product} onView={setSelectedProduct} onAdd={(item) => hasProductOptions(item) ? setSelectedProduct(item) : addToCart(item)} added={addedIds.includes(product.id)} liked={wishlist.includes(product.id)} onLike={(id) => {
+                : <div className="ar-shop-grid">{visibleProducts.map((product) => <ShopProductCard key={product.id} product={product} onView={setSelectedProduct} onAdd={(item) => hasProductOptions(item) ? setSelectedProduct(item) : addToCart(item)} added={addedIds.includes(product.id)} liked={wishlist.includes(product.id)} onLike={(id) => {
                   const next = wishlist.includes(id) ? wishlist.filter((item) => item !== id) : [...wishlist, id];
                   setWishlist(next);
                   try { window.localStorage.setItem("alraed-storefront-wishlist", JSON.stringify(next)); }
                   catch { setNotice("Your wishlist could not be saved in browser storage."); }
                 }} />)}</div>}
+          {pageCount > 1 && <nav className="ar-shop-pagination" aria-label="Product pages">
+            <span className="ar-shop-pagination-summary">Showing {(currentPage - 1) * productsPerPage + 1}–{Math.min(currentPage * productsPerPage, filteredProducts.length)} of {filteredProducts.length}</span>
+            <div className="ar-shop-pagination-controls">
+              <button type="button" onClick={() => changePage(currentPage - 1)} disabled={currentPage === 1} aria-label="Go to previous product page">PREVIOUS</button>
+              {Array.from({ length: pageCount }, (_, index) => index + 1).map((page) => (
+                <button type="button" key={page} className={page === currentPage ? "is-current" : ""} onClick={() => changePage(page)} aria-current={page === currentPage ? "page" : undefined} aria-label={`Go to product page ${page}`}>{page}</button>
+              ))}
+              <button type="button" onClick={() => changePage(currentPage + 1)} disabled={currentPage === pageCount} aria-label="Go to next product page">NEXT</button>
+            </div>
+          </nav>}
           <div className="ar-shop-bottom-note"><span>MADE FOR THE MATCH. AND EVERYTHING BEFORE IT.</span><span>{filteredProducts.length} {filteredProducts.length === 1 ? "PICK" : "PICKS"} TO EXPLORE</span></div>
         </section>
       </div>
